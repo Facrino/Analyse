@@ -12,35 +12,28 @@ st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
 st.title("📈 Historique + Prévision BTC/USD (bougies OHLC)")
 
 # -------------------------
-# Télécharger données BTC (sans cache)
+# Télécharger données BTC
 # -------------------------
 def load_data():
     end_date = date.today()
     start_date = end_date - timedelta(days=365)
 
-    try:
-        data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
-    except Exception as e:
-        st.error(f"Erreur téléchargement BTC : {e}")
-        return pd.DataFrame()
+    data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
 
     if data.empty:
         st.error("⚠️ Aucune donnée récupérée depuis yfinance")
         return pd.DataFrame()
-    
+
     data.reset_index(inplace=True)
-    
+
     # Vérifier colonnes OHLC
     required_cols = ["Open", "High", "Low", "Close"]
     for col in required_cols:
         if col not in data.columns:
             st.error(f"⚠️ Colonne manquante : {col}")
             return pd.DataFrame()
-    
-    # Conversion sécurisée
-    for col in required_cols:
-        data[col] = pd.to_numeric(data[col], errors="coerce")
-    
+
+    # On ne fait PAS pd.to_numeric → Plotly gère float automatiquement
     return data
 
 data = load_data()
@@ -103,13 +96,11 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    # Ajuster échelle Y
     y_min = min(data["Low"].min(), df_forecast["Low"].min()) * 0.995
     y_max = max(data["High"].max(), df_forecast["High"].max()) * 1.005
     fig.update_layout(xaxis_rangeslider_visible=True, yaxis=dict(range=[y_min, y_max]), template="plotly_dark")
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Tableau OHLC prévision
     st.subheader("Tableau OHLC prévision")
     st.dataframe(df_forecast)
