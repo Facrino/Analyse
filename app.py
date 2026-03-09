@@ -9,17 +9,17 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# =========================
-# CONFIGURATION PAGE
-# =========================
+# -------------------------
+# Configuration
+# -------------------------
 
-st.set_page_config(page_title="BTC Analyse IA", layout="centered")
+st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
 
-st.title("📈 Prévision BTC/USD (IA + News)")
+st.title("📈 Prévision BTC/USD avec bougies chandelier")
 
-# =========================
-# TELECHARGEMENT BTC
-# =========================
+# -------------------------
+# Télécharger données BTC
+# -------------------------
 
 @st.cache_data
 def load_data():
@@ -41,196 +41,127 @@ def load_data():
 
 data = load_data()
 
-st.success("✅ Données BTC téléchargées")
+st.success("Données BTC chargées")
 
-# =========================
-# CALENDRIER ECONOMIQUE
-# =========================
-
-@st.cache_data(ttl=1800)
-def get_multi_source_calendar():
-
-    events = []
-
-    sources = [
-
-        "https://www.jblanked.com/news/api/forex-factory/calendar/today/",
-        "https://www.jblanked.com/news/api/fxstreet/calendar/today/",
-        "https://www.jblanked.com/news/api/mql5/calendar/today/"
-    ]
-
-    for url in sources:
-
-        try:
-
-            r = requests.get(url, timeout=8)
-
-            if r.status_code == 200:
-
-                events.extend(r.json())
-
-        except:
-
-            pass
-
-    if events:
-
-        return pd.DataFrame(events)
-
-    return pd.DataFrame()
-
-
-calendar_df = get_multi_source_calendar()
-
-if not calendar_df.empty:
-
-    st.info(f"📅 {len(calendar_df)} annonces économiques détectées")
-
-# =========================
-# PARAMETRE PREVISION
-# =========================
+# -------------------------
+# Slider prévision
+# -------------------------
 
 forecast_days = st.slider(
-    "Nombre de jours à prédire",
+    "Nombre de jours à prévoir",
     1,
     14,
     7
 )
 
-# =========================
-# BOUTON PREVISION
-# =========================
+# -------------------------
+# Bouton prévision
+# -------------------------
 
-if st.button("🚀 Lancer la prévision"):
+if st.button("Lancer la prévision"):
 
-    with st.spinner("Calcul de l'IA..."):
+    df_train = data.set_index("Date")
 
-        # =========================
-        # MODELE ARIMA
-        # =========================
+    model = ARIMA(df_train["Close"], order=(5,1,0))
 
-        df_train = data.set_index("Date")
+    model_fit = model.fit()
 
-        model = ARIMA(df_train["Close"], order=(5,1,0))
+    forecast_close = model_fit.forecast(steps=forecast_days)
 
-        model_fit = model.fit()
+    last_date = pd.to_datetime(data["Date"].iloc[-1])
 
-        forecast_close = model_fit.forecast(steps=forecast_days)
+    last_price = float(data["Close"].iloc[-1])
 
-        last_date = pd.to_datetime(data["Date"].iloc[-1])
+    future_dates = [
+        last_date + timedelta(days=i)
+        for i in range(1, forecast_days + 1)
+    ]
 
-        last_price = float(data["Close"].iloc[-1])
+    dates_formattees = [
+        d.strftime("%d/%m/%Y")
+        for d in future_dates
+    ]
 
-        future_dates = [
+    # -------------------------
+    # Génération OHLC
+    # -------------------------
 
-            last_date + timedelta(days=i)
+    ohlc_forecast = []
 
-            for i in range(1, forecast_days + 1)
+    prev_close = last_price
 
-        ]
+    range_moyen = (data["High"] - data["Low"]).mean()
 
-        dates_formattees = [
+    for i in range(forecast_days):
 
-            d.strftime("%d/%m/%Y")
+        predicted_close = float(forecast_close.iloc[i])
 
-            for d in future_dates
+        predicted_open = prev_close
 
-        ]
+        predicted_high = predicted_open + (range_moyen * 0.75)
 
-        # =========================
-        # CREATION OHLC
-        # =========================
+        predicted_low = predicted_open - (range_moyen * 0.55)
 
-        ohlc_forecast = []
+        ohlc_forecast.append({
 
-        prev_close = last_price
+            "Date": dates_formattees[i],
+            "Open": round(predicted_open,2),
+            "High": round(predicted_high,2),
+            "Low": round(predicted_low,2),
+            "Close": round(predicted_close,2)
 
-        range_moyen = (data["High"] - data["Low"]).mean()
+        })
 
-        for i in range(forecast_days):
-
-            predicted_close = float(forecast_close.iloc[i])
-
-            predicted_open = prev_close
-
-            predicted_high = predicted_open + (range_moyen * 0.75)
-
-            predicted_low = predicted_open - (range_moyen * 0.55)
-
-            news_text = "Aucune"
-
-            if not calendar_df.empty:
-
-                news_text = "News possible"
-
-            ohlc_forecast.append({
-
-                "Date": dates_formattees[i],
-
-                "Open": round(predicted_open,2),
-
-                "High": round(predicted_high,2),
-
-                "Low": round(predicted_low,2),
-
-                "Close": round(predicted_close,2),
-
-                "News": news_text
-
-            })
-
-            prev_close = predicted_close
+        prev_close = predicted_close
 
 
-        df_ohlc = pd.DataFrame(ohlc_forecast)
+    df_ohlc = pd.DataFrame(ohlc_forecast)
 
-        st.subheader("📊 Prévision OHLC")
+    st.subheader("Tableau OHLC")
 
-        st.dataframe(df_ohlc, use_container_width=True)
+    st.dataframe(df_ohlc)
 
-        # =========================
-        # CORRECTION TYPES
-        # =========================
+    # -------------------------
+    # Conversion types
+    # -------------------------
 
-        df_ohlc["Date"] = pd.to_datetime(df_ohlc["Date"], dayfirst=True)
+    df_ohlc["Date"] = pd.to_datetime(df_ohlc["Date"], dayfirst=True)
 
-        for col in ["Open","High","Low","Close"]:
+    for col in ["Open","High","Low","Close"]:
 
-            df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
+        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
 
-        # =========================
-        # GRAPHIQUE CHANDELIER
-        # =========================
+    # -------------------------
+    # Graphique chandeliers
+    # -------------------------
 
-        st.subheader("🕯️ Graphique Chandeliers")
+    st.subheader("🕯️ Graphique chandeliers")
 
-        fig = go.Figure()
+    fig = go.Figure()
 
-        fig.add_trace(go.Candlestick(
+    fig.add_trace(go.Candlestick(
 
-            x=df_ohlc["Date"],
+        x=df_ohlc["Date"],
 
-            open=df_ohlc["Open"],
-            high=df_ohlc["High"],
-            low=df_ohlc["Low"],
-            close=df_ohlc["Close"],
+        open=df_ohlc["Open"],
+        high=df_ohlc["High"],
+        low=df_ohlc["Low"],
+        close=df_ohlc["Close"],
 
-            increasing_line_color="green",
-            decreasing_line_color="red"
+        increasing_line_color="green",
+        decreasing_line_color="red"
 
-        ))
+    ))
 
-        fig.update_layout(
+    fig.update_layout(
 
-            title="Prévision BTC/USD",
+        title="Prévision BTC/USD",
 
-            xaxis_title="Date",
-            yaxis_title="Prix USD",
+        xaxis_title="Date",
+        yaxis_title="Prix",
 
-            xaxis_rangeslider_visible=False,
+        xaxis_rangeslider_visible=False
 
-            template="plotly_dark"
+    )
 
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
