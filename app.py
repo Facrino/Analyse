@@ -33,7 +33,6 @@ def load_data():
             st.error(f"⚠️ Colonne manquante : {col}")
             return pd.DataFrame()
 
-    # On ne fait PAS pd.to_numeric → Plotly gère float automatiquement
     return data
 
 data = load_data()
@@ -61,10 +60,13 @@ if st.button("Lancer la prévision"):
     last_close = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
+    # Calculer range_moyen correctement
+    range_moyen = (data["High"] - data["Low"]).mean()
+    range_moyen = float(range_moyen)  # convertir en float pour éviter ValueError
+
     # Générer OHLC prévision
     ohlc_forecast = []
     prev_close = last_close
-    range_moyen = (data["High"] - data["Low"]).mean()
     for i in range(forecast_days):
         close = float(forecast_close.iloc[i])
         open_ = prev_close
@@ -75,7 +77,9 @@ if st.button("Lancer la prévision"):
 
     df_forecast = pd.DataFrame(ohlc_forecast)
 
+    # -------------------------
     # Graphique chandeliers
+    # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
 
     fig = go.Figure()
