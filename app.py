@@ -7,9 +7,10 @@ from datetime import date, timedelta, datetime
 import warnings
 import random
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
+
 st.set_page_config(page_title="BTC Analyse par Source", layout="centered")
-st.title("📈 BTC/USD Prévision OHLC (1 Jour) par Source")
+st.title("📈 BTC/USD Historique + Prévision 24h par Source")
 
 # -----------------------------
 # Charger données BTC
@@ -20,7 +21,7 @@ def load_data():
     start_date = end_date - timedelta(days=365)
 
     data = yf.download(
-        'BTC-USD',
+        "BTC-USD",
         start=start_date,
         end=end_date,
         progress=False
@@ -30,33 +31,33 @@ def load_data():
     return data
 
 data = load_data()
-df_train = data.set_index('Date')
 
-last_price = float(data['Close'].iloc[-1])
+df_train = data.set_index("Date")
+last_price = float(data["Close"].iloc[-1])
 
 # -----------------------------
-# Générer OHLC unique
+# Générer OHLC prévision
 # -----------------------------
 def generate_ohlc_per_source(source_name, base_price):
 
-    impact = random.randint(-3, 3)
+    impact = random.randint(-3,3)
 
-    open_price = round(base_price * (1 + 0.001*impact), 2)
-    high_price = round(open_price * (1 + random.uniform(0.0005,0.002)), 2)
-    low_price = round(open_price * (1 - random.uniform(0.0005,0.002)), 2)
-    close_price = round(open_price * (1 + 0.0005*impact), 2)
+    open_price = round(base_price * (1 + 0.001*impact),2)
+    high_price = round(open_price * (1 + random.uniform(0.001,0.003)),2)
+    low_price = round(open_price * (1 - random.uniform(0.001,0.003)),2)
+    close_price = round(open_price * (1 + 0.0005*impact),2)
 
     time_event = datetime.now() + timedelta(days=1)
 
     return pd.DataFrame([{
-        "Site": source_name,
-        "Date/Heure": time_event.strftime("%Y-%m-%d"),
-        "Annonce": f"Prévision BTC 24h ({source_name})",
-        "O": open_price,
-        "H": high_price,
-        "L": low_price,
-        "C": close_price,
-        "URL": f"https://www.{source_name.lower()}.com"
+        "Site":source_name,
+        "Date/Heure":time_event,
+        "O":open_price,
+        "H":high_price,
+        "L":low_price,
+        "C":close_price,
+        "Annonce":f"Prévision BTC 24h ({source_name})",
+        "URL":f"https://www.{source_name.lower()}.com"
     }])
 
 # -----------------------------
@@ -65,7 +66,7 @@ def generate_ohlc_per_source(source_name, base_price):
 historique_jours = st.slider(
     "📉 Nombre de jours historiques",
     10,
-    60,
+    90,
     30
 )
 
@@ -78,7 +79,7 @@ sources_disponibles = [
 ]
 
 sources_selectionnees = st.multiselect(
-    "Sélectionner sources pour OHLC",
+    "Sélectionner sources",
     options=sources_disponibles,
     default=sources_disponibles
 )
@@ -88,14 +89,15 @@ sources_selectionnees = st.multiselect(
 # -----------------------------
 if st.button("Lancer prévision 24h"):
 
-    with st.spinner("Prévision OHLC..."):
+    with st.spinner("Analyse BTC..."):
 
         # Prévision ARIMA
-        model = ARIMA(df_train['Close'], order=(5,1,0))
+        model = ARIMA(df_train["Close"], order=(5,1,0))
         model_fit = model.fit()
+
         forecast = model_fit.forecast(steps=1)
 
-        # Générer OHLC
+        # Générer OHLC par source
         df_all_sources = pd.DataFrame()
 
         for source in sources_selectionnees:
@@ -110,15 +112,15 @@ if st.button("Lancer prévision 24h"):
                 ignore_index=True
             )
 
-        # ---------------------
+        # -----------------------------
         # Tableau OHLC
-        # ---------------------
+        # -----------------------------
         st.subheader("📋 Prévision OHLC (24h)")
 
         for site in sources_selectionnees:
 
             df_site = df_all_sources[
-                df_all_sources['Site']==site
+                df_all_sources["Site"] == site
             ]
 
             st.markdown(f"### 🔹 Source : {site}")
@@ -126,64 +128,66 @@ if st.button("Lancer prévision 24h"):
             for i,row in df_site.iterrows():
 
                 st.markdown(
-                    f"**{row['Date/Heure']}** | "
-                    f"O: {row['O']} | "
-                    f"H: {row['H']} | "
-                    f"L: {row['L']} | "
-                    f"C: {row['C']} | "
-                    f"Annonce: {row['Annonce']}"
-                )
+                    f"""
+                    **Date : {row['Date/Heure']}**
 
-                st.markdown(
-                    f"[Voir annonce]({row['URL']})"
+                    O : {row['O']}  
+                    H : {row['H']}  
+                    L : {row['L']}  
+                    C : {row['C']}
+
+                    Annonce : {row['Annonce']}
+
+                    [Voir annonce]({row['URL']})
+                    """
                 )
 
             st.markdown("---")
 
-        # ---------------------
+        # -----------------------------
         # Graphique
-        # ---------------------
+        # -----------------------------
         df_candles = data.tail(historique_jours).copy()
 
         fig = go.Figure()
 
-        # Historique
+        # Bougies historiques
         fig.add_trace(
             go.Candlestick(
-                x=df_candles['Date'],
-                open=df_candles['Open'],
-                high=df_candles['High'],
-                low=df_candles['Low'],
-                close=df_candles['Close'],
-                name='Historique',
-                increasing_line_color='#26a69a',
-                decreasing_line_color='#ef5350'
+                x=df_candles["Date"],
+                open=df_candles["Open"],
+                high=df_candles["High"],
+                low=df_candles["Low"],
+                close=df_candles["Close"],
+                name="Historique BTC",
+                increasing_line_color="#26a69a",
+                decreasing_line_color="#ef5350"
             )
         )
 
-        # Prévision
-        for i,site in enumerate(sources_selectionnees):
+        # Bougies prévision
+        for site in sources_selectionnees:
 
             df_site = df_all_sources[
-                df_all_sources['Site']==site
+                df_all_sources["Site"] == site
             ]
 
             fig.add_trace(
                 go.Candlestick(
-                    x=pd.to_datetime(df_site['Date/Heure']),
-                    open=df_site['O'],
-                    high=df_site['H'],
-                    low=df_site['L'],
-                    close=df_site['C'],
-                    name=f'Prévision {site}'
+                    x=df_site["Date/Heure"],
+                    open=df_site["O"],
+                    high=df_site["H"],
+                    low=df_site["L"],
+                    close=df_site["C"],
+                    name=f"Prévision {site}"
                 )
             )
 
         fig.update_layout(
-            title=f'BTC/USD Historique {historique_jours} jours + Prévision 24h',
-            xaxis_title='Date',
-            yaxis_title='Prix USD',
-            template='plotly_dark',
+            title=f"BTC/USD Historique {historique_jours} jours + Prévision 24h",
+            xaxis_title="Date",
+            yaxis_title="Prix USD",
+            template="plotly_dark",
             xaxis_rangeslider_visible=False,
             height=600
         )
