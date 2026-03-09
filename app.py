@@ -10,11 +10,15 @@ from bs4 import BeautifulSoup
 
 warnings.filterwarnings('ignore')
 
-# Configuration
+# -------------------------
+# Configuration page
+# -------------------------
 st.set_page_config(page_title="BTC Analyse", layout="centered")
 st.title("📈 BTC/USD Analyse & Prévisions")
 
+# -------------------------
 # Sidebar menu
+# -------------------------
 menu = st.sidebar.selectbox(
     "Choisir une option",
     ["Prévision BTC", "Analyse annonces économiques"]
@@ -74,7 +78,7 @@ def analyse_news_btc():
     return score, headlines
 
 # -------------------------
-# Fonction pour récupérer annonces économiques scalping
+# Fonction annonces économiques + OHLC scalping
 # -------------------------
 def get_economic_announcements():
     sites = {
@@ -166,11 +170,16 @@ if menu == "Prévision BTC":
             pred_high = [c*1.01 for c in pred_close]
             pred_low = [c*0.99 for c in pred_close]
 
+            # -------------------------
+            # Afficher headlines
+            # -------------------------
             st.subheader("📰 Headlines BTC analysées")
             for h in headlines[:10]:
                 st.write("•", h)
 
-            # Tableau prévision
+            # -------------------------
+            # Tableau prévision OHLC
+            # -------------------------
             st.subheader("📋 Tableau prévision OHLC")
             df_forecast = pd.DataFrame({
                 "Date": [d.strftime("%d/%m/%Y") for d in future_dates],
@@ -181,7 +190,9 @@ if menu == "Prévision BTC":
             })
             st.dataframe(df_forecast, use_container_width=True)
 
-            # Graphique chandelier
+            # -------------------------
+            # Graphique chandelier élargi
+            # -------------------------
             df_candles = data.tail(60).copy()
             fig = go.Figure()
 
@@ -199,7 +210,7 @@ if menu == "Prévision BTC":
                 decreasing_fillcolor='#ef5350'
             ))
 
-            # Prévision bougies jaunes
+            # Bougies jaunes prévision
             fig.add_trace(go.Candlestick(
                 x=future_dates,
                 open=pred_open,
@@ -226,6 +237,7 @@ if menu == "Prévision BTC":
                 annotation_font_color="#FFD700"
             )
 
+            # Layout avec plus d'espace
             fig.update_layout(
                 title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days} jours',
                 xaxis_title='Date',
@@ -235,13 +247,15 @@ if menu == "Prévision BTC":
                 height=550,
                 plot_bgcolor='#1e1e2f',
                 paper_bgcolor='#1e1e2f',
-                bargap=0.25
+                bargap=0.35
             )
 
+            # Axe X élargi
             fig.update_xaxes(
                 showgrid=True,
                 gridcolor='rgba(255,255,255,0.08)',
-                range=[df_candles['Date'].iloc[0], future_dates[-1] + timedelta(days=3)]
+                range=[df_candles['Date'].iloc[0] - timedelta(days=2),
+                       future_dates[-1] + timedelta(days=5)]
             )
 
             fig.update_yaxes(
@@ -256,8 +270,6 @@ if menu == "Prévision BTC":
 # Option 2 : Annonces économiques
 # -------------------------
 if menu == "Analyse annonces économiques":
-
     st.subheader("📋 Annonces économiques et impact OHLC pour scalping")
-
     df_annonces = get_economic_announcements()
     st.dataframe(df_annonces, use_container_width=True)
