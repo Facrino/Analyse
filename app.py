@@ -36,21 +36,21 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
         model_fit = model.fit()
         forecast = model_fit.forecast(steps=forecast_days)
 
-        # Récupérer la dernière date et le dernier prix connu
+        # Dernière date et dernier prix
         last_date = pd.to_datetime(data['Date'].iloc[-1])
         last_price = float(data['Close'].iloc[-1])
 
-        # Créer la liste des dates futures
+        # Dates futures
         future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
         dates_formattees = [d.strftime('%d/%m/%Y') for d in future_dates]
 
-        # Calculer la différence de prix jour par jour
+        # Evolution du prix
         prix_liste = [last_price] + list(forecast)
         evolution = [prix_liste[i] - prix_liste[i-1] for i in range(1, len(prix_liste))]
 
         st.divider()
 
-        # --- CARTES VISUELLES POUR LES 3 PREMIERS JOURS ---
+        # --- CARTES VISUELLES ---
         st.subheader("🔥 Focus sur les 3 prochains jours")
         cols = st.columns(min(3, forecast_days))
         for i in range(min(3, forecast_days)):
@@ -62,7 +62,7 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
         st.divider()
 
-        # --- TABLEAU DÉTAILLÉ JOUR PAR JOUR ---
+        # --- TABLEAU ---
         st.subheader("📋 Tableau détaillé (Jour par jour)")
 
         df_result = pd.DataFrame({
@@ -76,20 +76,19 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
         st.divider()
 
         # -------------------------------------------------------
-        # --- GRAPHIQUE CHANDELIER (CANDLESTICK) AVEC PLOTLY ---
+        # GRAPHIQUE CHANDELIER
         # -------------------------------------------------------
+
         st.subheader("🕯️ Graphique Chandelier BTC/USD")
 
-        # On prend les 60 derniers jours pour le chandelier
         df_candles = data.tail(60).copy()
 
-        # Aplatir les colonnes MultiIndex si nécessaire (bug courant avec yfinance)
         if isinstance(df_candles.columns, pd.MultiIndex):
             df_candles.columns = df_candles.columns.get_level_values(0)
 
         fig = go.Figure()
 
-        # ── 1. Bougies chandelier historiques ──
+        # 1️⃣ Chandeliers historiques
         fig.add_trace(go.Candlestick(
             x=df_candles['Date'],
             open=df_candles['Open'],
@@ -97,27 +96,45 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             low=df_candles['Low'],
             close=df_candles['Close'],
             name='Historique (60j)',
-            increasing_line_color='#26a69a',   # Vert bougie haussière
-            decreasing_line_color='#ef5350',   # Rouge bougie baissière
+            increasing_line_color='#26a69a',
+            decreasing_line_color='#ef5350',
             increasing_fillcolor='#26a69a',
             decreasing_fillcolor='#ef5350',
         ))
 
-        # ── 2. Ligne de prévision ARIMA ──
-        # On ajoute le dernier point connu pour raccorder la courbe
-        forecast_x = [last_date] + future_dates
-        forecast_y = [last_price] + list(forecast)
+        # --------------------------------------------------
+        # Création des OHLC pour la prévision
+        # --------------------------------------------------
 
+        pred_open = [last_price] + list(forecast[:-1])
+        pred_close = list(forecast)
+
+        pred_high = [c * 1.01 for c in pred_close]
+        pred_low = [c * 0.99 for c in pred_close]
+
+        customdata = list(zip(pred_open, pred_high, pred_low, pred_close))
+
+        # 2️⃣ Ligne de prévision ARIMA
         fig.add_trace(go.Scatter(
-            x=forecast_x,
-            y=forecast_y,
+            x=future_dates,
+            y=pred_close,
             mode='lines+markers',
             name='Prévision ARIMA',
             line=dict(color='#FFD700', width=2, dash='dash'),
-            marker=dict(size=7, color='#FFD700', symbol='circle'),
+            marker=dict(size=7, color='#FFD700'),
+
+            customdata=customdata,
+
+            hovertemplate=
+            "<b>Date:</b> %{x}<br>" +
+            "Open: $%{customdata[0]:.2f}<br>" +
+            "High: $%{customdata[1]:.2f}<br>" +
+            "Low: $%{customdata[2]:.2f}<br>" +
+            "Close: $%{customdata[3]:.2f}" +
+            "<extra>Prévision</extra>"
         ))
 
-        # ── 3. Zone ombrée pour la période de prévision ──
+        # 3️⃣ Zone jaune de prévision
         fig.add_vrect(
             x0=last_date,
             x1=future_dates[-1],
@@ -129,7 +146,7 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             annotation_font_color="#FFD700",
         )
 
-        # ── 4. Mise en forme du graphique ──
+        # 4️⃣ Style graphique
         fig.update_layout(
             title=dict(
                 text=f'BTC/USD — Chandelier 60j + Prévision {forecast_days}j (ARIMA)',
@@ -151,11 +168,11 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             paper_bgcolor='#1e1e2f',
         )
 
-        # ✅ CORRIGÉ : update_xaxes et update_yaxes (avec "s")
         fig.update_xaxes(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.08)',
         )
+
         fig.update_yaxes(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.08)',
@@ -163,4 +180,3 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
         )
 
         st.plotly_chart(fig, use_container_width=True)
-        
