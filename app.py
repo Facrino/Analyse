@@ -1,108 +1,103 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
+import plotly.graph_objects as go
 from statsmodels.tsa.arima.model import ARIMA
 from datetime import date, timedelta
 import warnings
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
+
+st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
+st.title("📈 Historique + Prévision BTC/USD (bougies)")
 
 # -------------------------
-# Configuration de la page
-# -------------------------
-st.set_page_config(page_title="BTC Analyse", layout="centered")
-st.title("📈 Prévision BTC/USD (ARIMA)")
-
-# -------------------------
-# 1. Téléchargement des données
+# 1. Télécharger données BTC
 # -------------------------
 @st.cache_data
 def load_data():
     end_date = date.today()
     start_date = end_date - timedelta(days=365)
-    data = yf.download('BTC-USD', start=start_date, end=end_date, progress=False)
+    data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
     data.reset_index(inplace=True)
+    
+    # S'assurer que les colonnes OHLC sont float
+    for col in ["Open","High","Low","Close"]:
+        if col in data.columns:
+            data[col] = pd.to_numeric(data[col], errors="coerce")
+    data.dropna(subset=["Open","High","Low","Close"], inplace=True)
     return data
 
 data = load_data()
-st.success("✅ Données actuelles téléchargées avec succès !")
+if data.empty:
+    st.error("⚠️ Impossible de charger les données BTC")
+    st.stop()
+else:
+    st.success("✅ Données BTC chargées")
 
 # -------------------------
-# 2. Choix du nombre de jours par l'utilisateur
+# 2. Slider prévision
 # -------------------------
-forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", min_value=1, max_value=14, value=7)
+forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 
 # -------------------------
-# 3. Bouton pour lancer les prévisions
+# 3. Bouton prévision
 # -------------------------
-if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
-    with st.spinner("L'IA calcule les prévisions mathématiques..."):
+if st.button("Lancer la prévision"):
+    # Entraînement ARIMA
+    df_train = data.set_index("Date")
+    model = ARIMA(df_train["Close"], order=(5,1,0))
+    model_fit = model.fit()
+    forecast_close = model_fit.forecast(steps=forecast_days)
 
-        # -------------------------
-        # 3a. Entraînement du modèle ARIMA
-        # -------------------------
-        df_train = data.set_index('Date')
-        model = ARIMA(df_train['Close'], order=(5, 1, 0))
-        model_fit = model.fit()
-        forecast = model_fit.forecast(steps=forecast_days)
+    last_date = pd.to_datetime(data["Date"].iloc[-1])
+    last_close = float(data["Close"].iloc[-1])
+    future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-        # Récupérer la dernière date et le dernier prix connu
-        last_date = pd.to_datetime(data['Date'].iloc[-1])
-        last_price = float(data['Close'].iloc[-1])
+    # Prévision OHLC simple (range moyen)
+    range_moyen = float((data["High"] - data["Low"]).mean())
+    ohlc_forecast = []
+    prev_close = last_close
+    for i in range(forecast_days):
+        close = float(forecast_close[i])
+        open_ = prev_close
+        high = open_ + max(range_moyen*0.75, 0.01)
+        low  = open_ - max(range_moyen*0.55, 0.01)
+        ohlc_forecast.append({"Date": future_dates[i], "Open": open_, "High": high, "Low": low, "Close": close})
+        prev_close = close
+    df_forecast = pd.DataFrame(ohlc_forecast)
 
-        # Créer la liste des dates futures
-        future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
-        dates_formattees = [d.strftime('%d/%m/%Y') for d in future_dates]
+    # -------------------------
+    # Graphique bougies Plotly
+    # -------------------------
+    fig = go.Figure()
 
-        # Calculer la différence de prix jour par jour
-        prix_liste = [last_price] + list(forecast)
-        evolution = [prix_liste[i] - prix_liste[i - 1] for i in range(1, len(prix_liste))]
+    # Historique 1 an (vert/rouge)
+    fig.add_trace(go.Candlestick(
+        x=data["Date"], open=data["Open"], high=data["High"],
+        low=data["Low"], close=data["Close"],
+        name="Historique", increasing_line_color="green",
+        decreasing_line_color="red"
+    ))
 
-        st.divider()
+    # Prévision (bleu/orange)
+    fig.add_trace(go.Candlestick(
+        x=df_forecast["Date"], open=df_forecast["Open"], high=df_forecast["High"],
+        low=df_forecast["Low"], close=df_forecast["Close"],
+        name="Prévision", increasing_line_color="blue",
+        decreasing_line_color="orange"
+    ))
 
-        # -------------------------
-        # 3b. Cartes visuelles pour les 3 premiers jours
-        # -------------------------
-        st.subheader("🔥 Focus sur les 3 prochains jours")
-        cols = st.columns(min(3, forecast_days))
-        for i in range(min(3, forecast_days)):
-            cols[i].metric(
-                label=dates_formattees[i],
-                value=f"{forecast[i]:.0f} $",  # Remplacé forecast.iloc[i] par forecast[i]
-                delta=f"{evolution[i]:.2f} $"  # Flèche verte si positif, rouge si négatif
-            )
+    # Limites Y sécurisées
+    y_min = np.nanmin([data["Low"].min(), df_forecast["Low"].min()]) * 0.995
+    y_max = np.nanmax([data["High"].max(), df_forecast["High"].max()]) * 1.005
 
-        st.divider()
+    fig.update_layout(
+        xaxis_rangeslider_visible=True,
+        yaxis=dict(range=[y_min, y_max]),
+        template="plotly_dark",
+        title=f"Historique + Prévision BTC/USD ({forecast_days} jours)"
+    )
 
-        # -------------------------
-        # 3c. Tableau détaillé jour par jour
-        # -------------------------
-        st.subheader("📋 Tableau détaillé (Jour par jour)")
-        df_result = pd.DataFrame({
-            "Date": dates_formattees,
-            "Prix Prévu (USD)": [round(p, 2) for p in forecast],
-            "Évolution journalière": [round(e, 2) for e in evolution]
-        })
-        st.dataframe(df_result, use_container_width=True)
-
-        # -------------------------
-        # 3d. Graphique matplotlib
-        # -------------------------
-        st.subheader("🎨 Graphique d'évolution")
-        fig, ax = plt.subplots(figsize=(10, 5))
-
-        # On n'affiche que les 60 derniers jours pour mieux voir la prévision
-        ax.plot(data['Date'].tail(60), data['Close'].tail(60),
-                label='Historique récent (60j)', color='orange', linewidth=2)
-        ax.plot(future_dates, forecast, label='Prévision IA',
-                color='green', marker='o', linestyle='dashed', linewidth=2)
-
-        ax.set_title(f'Prévision BTC/USD sur {forecast_days} jours')
-        ax.set_ylabel('Prix en USD')
-        ax.legend()
-        ax.grid(True, linestyle=':', alpha=0.7)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-
-        st.pyplot(fig)
+    st.plotly_chart(fig, use_container_width=True)
