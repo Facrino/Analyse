@@ -12,7 +12,7 @@ st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
 st.title("📈 Historique + Prévision BTC/USD (vert/rouge & bleu/orange)")
 
 # -------------------------
-# Charger données BTC
+# Télécharger données BTC
 # -------------------------
 @st.cache_data
 def load_data():
@@ -25,19 +25,21 @@ def load_data():
         st.error(f"Erreur téléchargement BTC : {e}")
         return pd.DataFrame()
 
+    if data.empty:
+        st.error("⚠️ Aucune donnée récupérée depuis yfinance. Vérifie la connexion ou le symbole.")
+        return pd.DataFrame()
+
     data.reset_index(inplace=True)
 
-    # Si colonnes MultiIndex, aplatir
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = ["_".join(col).strip() if isinstance(col, tuple) else col for col in data.columns]
-
-    # Colonnes nécessaires
+    # Vérifier que toutes les colonnes OHLC existent
     required_cols = ["Open", "High", "Low", "Close"]
+    missing_cols = [col for col in required_cols if col not in data.columns]
+    if missing_cols:
+        st.error(f"⚠️ Colonnes manquantes dans le téléchargement : {', '.join(missing_cols)}")
+        return pd.DataFrame()
+
+    # Conversion sécurisée
     for col in required_cols:
-        if col not in data.columns:
-            st.error(f"Colonne manquante : {col}")
-            return pd.DataFrame()
-        # Conversion sécurisée
         data[col] = pd.to_numeric(data[col], errors="coerce")
 
     return data
@@ -46,7 +48,7 @@ data = load_data()
 if data.empty:
     st.stop()
 else:
-    st.success("✅ Données BTC chargées")
+    st.success("✅ Données BTC chargées avec succès !")
 
 # -------------------------
 # Slider prévision
