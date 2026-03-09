@@ -9,9 +9,6 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# -------------------------
-# Configuration Streamlit
-# -------------------------
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
 st.title("📈 Historique + Prévision BTC/USD (bougies)")
 
@@ -28,10 +25,10 @@ def load_data():
         return pd.DataFrame()
     
     data.reset_index(inplace=True)
+    # Convertir toutes les colonnes OHLC en float pour Plotly
     for col in ["Open","High","Low","Close"]:
-        if col not in data.columns:
-            st.error(f"⚠️ Colonne manquante : {col}")
-            return pd.DataFrame()
+        data[col] = pd.to_numeric(data[col], errors="coerce")
+    data.dropna(subset=["Open","High","Low","Close"], inplace=True)
     return data
 
 data = load_data()
@@ -50,19 +47,18 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
-    # --- Modèle ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
     forecast_close = model_fit.forecast(steps=forecast_days)
 
-    # --- Dates futures
     last_date = pd.to_datetime(data["Date"].iloc[-1])
     last_close = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-    # --- Prévision simple OHLC pour bougies
     range_moyen = float((data["High"] - data["Low"]).mean())
+
+    # Prévision OHLC
     ohlc_forecast = []
     prev_close = last_close
     for i in range(forecast_days):
@@ -77,7 +73,6 @@ if st.button("Lancer la prévision"):
     # -------------------------
     # Graphique chandeliers
     # -------------------------
-    st.subheader("🕯️ Historique + Prévision BTC/USD")
     fig = go.Figure()
 
     # Historique vert/rouge
@@ -96,14 +91,15 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    # --- Calcul sécurisé yaxis pour éviter ValueError ---
+    # Y-axis sécurisé
     y_min = np.nanmin([data["Low"].values.min(), df_forecast["Low"].values.min()]) * 0.995
     y_max = np.nanmax([data["High"].values.max(), df_forecast["High"].values.max()]) * 1.005
 
     fig.update_layout(
         xaxis_rangeslider_visible=True,
         yaxis=dict(range=[y_min, y_max]),
-        template="plotly_dark"
+        template="plotly_dark",
+        title="Historique + Prévision BTC/USD"
     )
 
     st.plotly_chart(fig, use_container_width=True)
