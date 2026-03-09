@@ -3,16 +3,26 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from statsmodels.tsa.arima.model import ARIMA
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import warnings
+import requests
+from bs4 import BeautifulSoup
 
 warnings.filterwarnings('ignore')
 
 # Configuration
 st.set_page_config(page_title="BTC Analyse", layout="centered")
-st.title("📈 Prévision BTC/USD (ARIMA)")
+st.title("📈 BTC/USD Analyse & Prévisions")
 
-# Chargement des données
+# Sidebar menu
+menu = st.sidebar.selectbox(
+    "Choisir une option",
+    ["Prévision BTC", "Analyse annonces économiques"]
+)
+
+# -------------------------
+# Charger données BTC
+# -------------------------
 @st.cache_data
 def load_data():
     end_date = date.today()
@@ -22,139 +32,232 @@ def load_data():
     return data
 
 data = load_data()
-st.success("✅ Données actuelles téléchargées avec succès !")
+df_train = data.set_index('Date')
+last_price = float(data['Close'].iloc[-1])
 
-# Choix des jours de prévision
-forecast_days = st.slider(
-    "🗓️ Combien de jours voulez-vous prédire ?",
-    min_value=1,
-    max_value=14,
-    value=7
-)
+# -------------------------
+# Fonction analyse news BTC
+# -------------------------
+def analyse_news_btc():
+    sites = [
+        "https://www.coindesk.com",
+        "https://cointelegraph.com",
+        "https://cryptoslate.com",
+        "https://bitcoinmagazine.com",
+        "https://decrypt.co"
+    ]
 
-if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
+    keywords_positive = ["adoption","bull","institution","ETF","approval","growth"]
+    keywords_negative = ["ban","hack","crash","lawsuit","regulation","collapse"]
 
-    with st.spinner("L'IA calcule les prévisions mathématiques..."):
+    score = 0
+    headlines = []
 
-        df_train = data.set_index('Date')
+    for url in sites:
+        try:
+            r = requests.get(url, timeout=10)
+            soup = BeautifulSoup(r.text,"html.parser")
+            titles = soup.find_all("h2")
+            for t in titles[:5]:
+                text = t.text.strip()
+                text_lower = text.lower()
+                headlines.append(text)
+                for p in keywords_positive:
+                    if p in text_lower:
+                        score += 1
+                for n in keywords_negative:
+                    if n in text_lower:
+                        score -= 1
+        except:
+            pass
 
-        model = ARIMA(df_train['Close'], order=(5,1,0))
-        model_fit = model.fit()
+    return score, headlines
 
-        forecast = model_fit.forecast(steps=forecast_days)
+# -------------------------
+# Fonction pour récupérer annonces économiques scalping
+# -------------------------
+def get_economic_announcements():
+    sites = {
+        "Investing": "https://www.investing.com/news/cryptocurrency-news",
+        "ForexFactory": "https://www.forexfactory.com/calendar",
+        "TradingEconomics": "https://tradingeconomics.com/calendar",
+        "MarketWatch": "https://www.marketwatch.com/investing/cryptocurrency",
+        "CoinDesk": "https://www.coindesk.com"
+    }
 
-        last_date = pd.to_datetime(data['Date'].iloc[-1])
-        last_price = float(data['Close'].iloc[-1])
+    keywords_positive = ["bull","adoption","ETF","growth","approval","institution"]
+    keywords_negative = ["ban","hack","crash","lawsuit","regulation","collapse"]
 
-        future_dates = [
-            last_date + timedelta(days=i)
-            for i in range(1, forecast_days+1)
-        ]
+    results = []
 
-        st.divider()
+    for site_name, url in sites.items():
+        try:
+            r = requests.get(url, timeout=10)
+            soup = BeautifulSoup(r.text, "html.parser")
+            titles = soup.find_all("h2")
+            for t in titles[:5]:
+                text = t.text.strip()
+                text_lower = text.lower()
+                impact = 0
+                for p in keywords_positive:
+                    if p in text_lower:
+                        impact += 1
+                for n in keywords_negative:
+                    if n in text_lower:
+                        impact -= 1
 
-        # Graphique chandelier
-        st.subheader("🕯️ Graphique Chandelier BTC/USD")
+                # Heures simulées pour scalping
+                time_event = datetime.now() + timedelta(minutes=5*len(results))
 
-        df_candles = data.tail(60).copy()
+                open_price = last_price
+                close_price = last_price * (1 + 0.001*impact)
+                high_price = max(open_price, close_price) * 1.001
+                low_price = min(open_price, close_price) * 0.999
 
-        if isinstance(df_candles.columns, pd.MultiIndex):
-            df_candles.columns = df_candles.columns.get_level_values(0)
+                results.append({
+                    "Site": site_name,
+                    "Date/Heure": time_event.strftime("%Y-%m-%d %H:%M"),
+                    "Annonce": text,
+                    "O": round(open_price,2),
+                    "H": round(high_price,2),
+                    "L": round(low_price,2),
+                    "C": round(close_price,2),
+                    "Impact": impact
+                })
+        except:
+            results.append({
+                "Site": site_name,
+                "Date/Heure": "-",
+                "Annonce": "Impossible de récupérer les données",
+                "O": "-",
+                "H": "-",
+                "L": "-",
+                "C": "-",
+                "Impact": 0
+            })
+    return pd.DataFrame(results)
 
-        fig = go.Figure()
+# -------------------------
+# Option 1 : Prévision BTC
+# -------------------------
+if menu == "Prévision BTC":
 
-        # ───────── Historique ─────────
-        fig.add_trace(go.Candlestick(
-            x=df_candles['Date'],
-            open=df_candles['Open'],
-            high=df_candles['High'],
-            low=df_candles['Low'],
-            close=df_candles['Close'],
-            name='Historique (60j)',
-            increasing_line_color='#26a69a',
-            decreasing_line_color='#ef5350',
-            increasing_fillcolor='#26a69a',
-            decreasing_fillcolor='#ef5350'
-        ))
+    forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", 1, 14, 7)
 
-        # ───────── Prévision OHLC ─────────
-        pred_close = list(forecast)
-        pred_open = [last_price] + pred_close[:-1]
+    if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
-        pred_high = [c * 1.01 for c in pred_close]
-        pred_low = [c * 0.99 for c in pred_close]
+        with st.spinner("Calcul des prévisions ARIMA..."):
 
-        # ───────── Bougies prévision jaunes ─────────
-        fig.add_trace(go.Candlestick(
-            x=future_dates,
-            open=pred_open,
-            high=pred_high,
-            low=pred_low,
-            close=pred_close,
+            model = ARIMA(df_train['Close'], order=(5,1,0))
+            model_fit = model.fit()
+            forecast = model_fit.forecast(steps=forecast_days)
 
-            name='Prévision',
+            # Analyse news BTC
+            news_score, headlines = analyse_news_btc()
+            impact = news_score * 0.002
+            forecast = forecast * (1 + impact)
 
-            increasing_line_color='#FFD700',
-            decreasing_line_color='#FFD700',
+            last_date = pd.to_datetime(data['Date'].iloc[-1])
+            future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-            increasing_fillcolor='rgba(255,215,0,0.6)',
-            decreasing_fillcolor='rgba(255,215,0,0.6)',
+            # Construire OHLC prévision
+            pred_close = list(forecast)
+            pred_open = [last_price] + pred_close[:-1]
+            pred_high = [c*1.01 for c in pred_close]
+            pred_low = [c*0.99 for c in pred_close]
 
-            hovertemplate=
-            "<b>Date:</b> %{x}<br>"
-            "Open: $%{open:.2f}<br>"
-            "High: $%{high:.2f}<br>"
-            "Low: $%{low:.2f}<br>"
-            "Close: $%{close:.2f}"
-            "<extra>Prévision</extra>"
-        ))
+            st.subheader("📰 Headlines BTC analysées")
+            for h in headlines[:10]:
+                st.write("•", h)
 
-        # ───────── Zone de prévision ─────────
-        fig.add_vrect(
-            x0=last_date,
-            x1=future_dates[-1],
-            fillcolor="rgba(255,215,0,0.08)",
-            layer="below",
-            line_width=0,
-            annotation_text="Zone prévision",
-            annotation_position="top left",
-            annotation_font_color="#FFD700"
-        )
+            # Tableau prévision
+            st.subheader("📋 Tableau prévision OHLC")
+            df_forecast = pd.DataFrame({
+                "Date": [d.strftime("%d/%m/%Y") for d in future_dates],
+                "Open": pred_open,
+                "High": pred_high,
+                "Low": pred_low,
+                "Close": pred_close
+            })
+            st.dataframe(df_forecast, use_container_width=True)
 
-        # ───────── Mise en forme ─────────
-        fig.update_layout(
+            # Graphique chandelier
+            df_candles = data.tail(60).copy()
+            fig = go.Figure()
 
-            title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days} jours',
+            # Historique
+            fig.add_trace(go.Candlestick(
+                x=df_candles['Date'],
+                open=df_candles['Open'],
+                high=df_candles['High'],
+                low=df_candles['Low'],
+                close=df_candles['Close'],
+                name='Historique (60j)',
+                increasing_line_color='#26a69a',
+                decreasing_line_color='#ef5350',
+                increasing_fillcolor='#26a69a',
+                decreasing_fillcolor='#ef5350'
+            ))
 
-            xaxis_title='Date',
-            yaxis_title='Prix USD',
+            # Prévision bougies jaunes
+            fig.add_trace(go.Candlestick(
+                x=future_dates,
+                open=pred_open,
+                high=pred_high,
+                low=pred_low,
+                close=pred_close,
+                name='Prévision BTC',
+                increasing_line_color='#FFD700',
+                decreasing_line_color='#FFD700',
+                increasing_fillcolor='rgba(255,215,0,0.6)',
+                decreasing_fillcolor='rgba(255,215,0,0.6)',
+                hovertemplate="<b>Date:</b> %{x}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>Low: $%{low:.2f}<br>Close: $%{close:.2f}<extra>Prévision</extra>"
+            ))
 
-            template='plotly_dark',
+            # Zone jaune
+            fig.add_vrect(
+                x0=last_date,
+                x1=future_dates[-1],
+                fillcolor="rgba(255,215,0,0.08)",
+                layer="below",
+                line_width=0,
+                annotation_text="Zone prévision",
+                annotation_position="top left",
+                annotation_font_color="#FFD700"
+            )
 
-            xaxis_rangeslider_visible=False,
+            fig.update_layout(
+                title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days} jours',
+                xaxis_title='Date',
+                yaxis_title='Prix USD',
+                template='plotly_dark',
+                xaxis_rangeslider_visible=False,
+                height=550,
+                plot_bgcolor='#1e1e2f',
+                paper_bgcolor='#1e1e2f',
+                bargap=0.25
+            )
 
-            height=550,
+            fig.update_xaxes(
+                showgrid=True,
+                gridcolor='rgba(255,255,255,0.08)',
+                range=[df_candles['Date'].iloc[0], future_dates[-1] + timedelta(days=3)]
+            )
 
-            plot_bgcolor='#1e1e2f',
-            paper_bgcolor='#1e1e2f',
+            fig.update_yaxes(
+                showgrid=True,
+                gridcolor='rgba(255,255,255,0.08)',
+                tickprefix='$'
+            )
 
-            bargap=0.25
-        )
+            st.plotly_chart(fig, use_container_width=True)
 
-        # Espacer les bougies
-        fig.update_xaxes(
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.08)',
-            range=[
-                df_candles['Date'].iloc[0],
-                future_dates[-1] + timedelta(days=3)
-            ]
-        )
+# -------------------------
+# Option 2 : Annonces économiques
+# -------------------------
+if menu == "Analyse annonces économiques":
 
-        fig.update_yaxes(
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.08)',
-            tickprefix='$'
-        )
+    st.subheader("📋 Annonces économiques et impact OHLC pour scalping")
 
-        st.plotly_chart(fig, use_container_width=True)
+    df_annonces = get_economic_announcements()
+    st.dataframe(df_annonces, use_container_width=True)
