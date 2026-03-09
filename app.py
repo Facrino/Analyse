@@ -9,10 +9,10 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
-st.title("📈 Prévision BTC/USD avec bougies chandelier")
+st.title("📈 Historique + Prévision BTC/USD en bougies vertes/rouges")
 
 # -------------------------
-# Téléchargement BTC
+# Télécharger données BTC
 # -------------------------
 @st.cache_data
 def load_data():
@@ -44,10 +44,9 @@ if st.button("Lancer la prévision"):
     last_price = float(data["Close"].iloc[-1])
 
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
-    dates_formattees = [d.strftime("%d/%m/%Y") for d in future_dates]
 
     # -------------------------
-    # Génération OHLC pour bougies
+    # Génération OHLC pour prévision
     # -------------------------
     ohlc_forecast = []
     prev_close = last_price
@@ -60,7 +59,7 @@ if st.button("Lancer la prévision"):
         predicted_low = predicted_open - range_moyen*0.55
 
         ohlc_forecast.append({
-            "Date": dates_formattees[i],
+            "Date": future_dates[i],
             "Open": float(predicted_open),
             "High": float(predicted_high),
             "Low": float(predicted_low),
@@ -69,36 +68,55 @@ if st.button("Lancer la prévision"):
 
         prev_close = predicted_close
 
-    df_ohlc = pd.DataFrame(ohlc_forecast)
+    df_forecast = pd.DataFrame(ohlc_forecast)
 
     # -------------------------
-    # Table OHLC
+    # Graphique chandeliers vert/rouge
     # -------------------------
-    st.subheader("Tableau OHLC")
-    st.dataframe(df_ohlc)
+    st.subheader("🕯️ Historique + Prévision BTC/USD")
 
-    # -------------------------
-    # Graphique chandeliers
-    # -------------------------
-    df_ohlc["Date"] = pd.to_datetime(df_ohlc["Date"], dayfirst=True)
+    # Assurer le format datetime
+    data["Date"] = pd.to_datetime(data["Date"])
+    df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
 
     fig = go.Figure()
+
+    # Historique 1 an avec vert/rouge
     fig.add_trace(go.Candlestick(
-        x=df_ohlc["Date"],
-        open=df_ohlc["Open"],
-        high=df_ohlc["High"],
-        low=df_ohlc["Low"],
-        close=df_ohlc["Close"],
+        x=data["Date"],
+        open=data["Open"],
+        high=data["High"],
+        low=data["Low"],
+        close=data["Close"],
+        name="Historique",
+        increasing_line_color="green",
+        decreasing_line_color="red"
+    ))
+
+    # Prévision ARIMA avec vert/rouge
+    fig.add_trace(go.Candlestick(
+        x=df_forecast["Date"],
+        open=df_forecast["Open"],
+        high=df_forecast["High"],
+        low=df_forecast["Low"],
+        close=df_forecast["Close"],
+        name="Prévision",
         increasing_line_color="green",
         decreasing_line_color="red"
     ))
 
     fig.update_layout(
-        title="Prévision BTC/USD",
+        title="BTC/USD Historique + Prévision",
         xaxis_title="Date",
         yaxis_title="Prix USD",
-        xaxis_rangeslider_visible=False,
-        yaxis=dict(autorange=True)
+        xaxis_rangeslider_visible=True,
+        template="plotly_dark"
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+    # -------------------------
+    # Tableau prévision
+    # -------------------------
+    st.subheader("Tableau prévision OHLC")
+    st.dataframe(df_forecast)
