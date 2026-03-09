@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="BTC Analyse", layout="centered")
-st.title("📈 BTC/USD Analyse & Prévisions Dynamiques")
+st.title("📈 BTC/USD Prévisions dynamiques selon sources économiques")
 
 # -----------------------------
 # Charger données BTC
@@ -29,7 +29,7 @@ df_train = data.set_index('Date')
 last_price = float(data['Close'].iloc[-1])
 
 # -----------------------------
-# Analyser annonces économiques
+# Fonction récupérer annonces économiques
 # -----------------------------
 def get_economic_announcements():
     sites = {
@@ -63,19 +63,10 @@ def get_economic_announcements():
 
                 time_event = datetime.now() + timedelta(minutes=5*len(results))
 
-                open_price = last_price
-                close_price = last_price * (1 + 0.001*impact)
-                high_price = max(open_price, close_price) * 1.001
-                low_price = min(open_price, close_price) * 0.999
-
                 results.append({
                     "Site": site_name,
                     "Date/Heure": time_event.strftime("%Y-%m-%d %H:%M"),
                     "Annonce": text,
-                    "O": round(open_price,2),
-                    "H": round(high_price,2),
-                    "L": round(low_price,2),
-                    "C": round(close_price,2),
                     "Impact": impact,
                     "URL": url
                 })
@@ -84,10 +75,6 @@ def get_economic_announcements():
                 "Site": site_name,
                 "Date/Heure": "-",
                 "Annonce": "Impossible de récupérer",
-                "O": "-",
-                "H": "-",
-                "L": "-",
-                "C": "-",
                 "Impact": 0,
                 "URL": url
             })
@@ -99,44 +86,44 @@ def get_economic_announcements():
 forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", 1, 14, 7)
 historique_jours = st.slider("📉 Nombre de jours historiques à afficher", 10, 60, 30)
 
-# Sélection dynamique des sources
+# Choix sources
 sources_disponibles = ["CoinDesk","Investing","ForexFactory","TradingEconomics","MarketWatch"]
 sources_selectionnees = st.multiselect(
-    "Sélectionnez les sources à utiliser pour le calcul OHLC",
+    "Sélectionnez les sources à utiliser pour calcul OHLC",
     options=sources_disponibles,
     default=sources_disponibles
 )
 
 if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
-    with st.spinner("Calcul des prévisions ARIMA et OHLC dynamique..."):
+    with st.spinner("Calcul ARIMA + OHLC dynamique selon sources..."):
 
-        # ARIMA pour prévision close
+        # Prévision ARIMA
         model = ARIMA(df_train['Close'], order=(5,1,0))
         model_fit = model.fit()
-        forecast = model_fit.forecast(steps=forecast_days)
+        forecast_base = model_fit.forecast(steps=forecast_days)
 
-        # Récupération annonces économiques filtrées par sources sélectionnées
+        # Récupérer annonces filtrées selon sources sélectionnées
         df_annonces = get_economic_announcements()
         df_filtered = df_annonces[df_annonces['Site'].isin(sources_selectionnees)]
 
         # Calcul impact combiné pour chaque jour
+        # Ici on suppose que l'impact total est réparti uniformément sur tous les jours prévisionnels
         impact_total = df_filtered['Impact'].sum() * 0.002
 
-        # Ajustement prévision close selon impact total
-        forecast = forecast * (1 + impact_total)
-
+        # Construire OHLC prévisionnel
         last_date = pd.to_datetime(data['Date'].iloc[-1])
         future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-        # Construire OHLC dynamique
-        pred_close = list(forecast)
+        pred_close = list(forecast_base * (1 + impact_total))
         pred_open = [last_price] + pred_close[:-1]
         pred_high = [c*1.01 for c in pred_close]
         pred_low = [c*0.99 for c in pred_close]
 
-        # Tableau prévision OHLC avec liens cliquables
-        st.subheader("📋 Tableau OHLC prévisionnel avec sources sélectionnées")
+        # ---------------------
+        # Tableau prévision avec liens cliquables
+        # ---------------------
+        st.subheader("📋 OHLC prévisionnel dynamique selon sources sélectionnées")
         for i in range(forecast_days):
             sources_html = " | ".join([f'<a href="{url}" target="_blank">{site}</a>' for site, url in zip(df_filtered['Site'], df_filtered['URL'])])
             heures = ", ".join(df_filtered['Date/Heure'])
@@ -147,7 +134,9 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             st.markdown(sources_html, unsafe_allow_html=True)
             st.markdown("---")
 
-        # Graphique chandelier
+        # ---------------------
+        # Graphique
+        # ---------------------
         df_candles = data.tail(historique_jours).copy()
         if isinstance(df_candles.columns, pd.MultiIndex):
             df_candles.columns = df_candles.columns.get_level_values(0)
