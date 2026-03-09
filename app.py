@@ -40,16 +40,16 @@ df_train = data.set_index('Date')
 last_price = float(data['Close'].iloc[-1])
 
 # -------------------------
-# Fonction analyse news BTC
+# Fonction analyse news BTC avec source et heure
 # -------------------------
 def analyse_news_btc():
-    sites = [
-        "https://www.coindesk.com",
-        "https://cointelegraph.com",
-        "https://cryptoslate.com",
-        "https://bitcoinmagazine.com",
-        "https://decrypt.co"
-    ]
+    sites = {
+        "CoinDesk": "https://www.coindesk.com",
+        "CoinTelegraph": "https://cointelegraph.com",
+        "CryptoSlate": "https://cryptoslate.com",
+        "BitcoinMagazine": "https://bitcoinmagazine.com",
+        "Decrypt": "https://decrypt.co"
+    }
 
     keywords_positive = ["adoption","bull","institution","ETF","approval","growth"]
     keywords_negative = ["ban","hack","crash","lawsuit","regulation","collapse"]
@@ -57,7 +57,7 @@ def analyse_news_btc():
     score = 0
     headlines = []
 
-    for url in sites:
+    for site_name, url in sites.items():
         try:
             r = requests.get(url, timeout=10)
             soup = BeautifulSoup(r.text,"html.parser")
@@ -65,7 +65,13 @@ def analyse_news_btc():
             for t in titles[:5]:
                 text = t.text.strip()
                 text_lower = text.lower()
-                headlines.append(text)
+                pub_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+                headlines.append({
+                    "Titre": text,
+                    "Site": site_name,
+                    "URL": url,
+                    "Heure": pub_time
+                })
                 for p in keywords_positive:
                     if p in text_lower:
                         score += 1
@@ -73,8 +79,12 @@ def analyse_news_btc():
                     if n in text_lower:
                         score -= 1
         except:
-            pass
-
+            headlines.append({
+                "Titre": "Impossible de récupérer",
+                "Site": site_name,
+                "URL": url,
+                "Heure": "-"
+            })
     return score, headlines
 
 # -------------------------
@@ -174,22 +184,31 @@ if menu == "Prévision BTC":
             # -------------------------
             # Afficher headlines
             # -------------------------
-            st.subheader("📰 Headlines BTC analysées")
-            for h in headlines[:10]:
-                st.write("•", h)
+            st.subheader("📰 Headlines BTC analysées avec source et heure")
+            for h in headlines[:forecast_days]:
+                st.markdown(f"• **{h['Heure']}** — [{h['Site']}]({h['URL']}): {h['Titre']}")
 
             # -------------------------
-            # Tableau prévision OHLC
+            # Tableau prévision OHLC avec source et heure
             # -------------------------
-            st.subheader("📋 Tableau prévision OHLC")
             df_forecast = pd.DataFrame({
                 "Date": [d.strftime("%d/%m/%Y") for d in future_dates],
                 "Open": pred_open,
                 "High": pred_high,
                 "Low": pred_low,
-                "Close": pred_close
+                "Close": pred_close,
+                "Source": [h['Site'] for h in headlines[:forecast_days]],
+                "Heure": [h['Heure'] for h in headlines[:forecast_days]],
+                "URL": [h['URL'] for h in headlines[:forecast_days]]
             })
-            st.dataframe(df_forecast, use_container_width=True)
+
+            st.subheader("📋 Tableau prévision OHLC avec source et heure")
+            for i in range(len(df_forecast)):
+                st.markdown(
+                    f"**{df_forecast['Date'][i]}** | O: {df_forecast['Open'][i]:.2f} | H: {df_forecast['High'][i]:.2f} | "
+                    f"L: {df_forecast['Low'][i]:.2f} | C: {df_forecast['Close'][i]:.2f} | "
+                    f"Heure: {df_forecast['Heure'][i]} | Source: [{df_forecast['Source'][i]}]({df_forecast['URL'][i]})"
+                )
 
             # -------------------------
             # Graphique chandelier élargi avec historique visible
@@ -225,8 +244,7 @@ if menu == "Prévision BTC":
                 increasing_line_color='#FFD700',
                 decreasing_line_color='#FFD700',
                 increasing_fillcolor='rgba(255,215,0,0.6)',
-                decreasing_fillcolor='rgba(255,215,0,0.6)',
-                hovertemplate="<b>Date:</b> %{x}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>Low: $%{low:.2f}<br>Close: $%{close:.2f}<extra>Prévision</extra>"
+                decreasing_fillcolor='rgba(255,215,0,0.6)'
             ))
 
             # Zone jaune
@@ -254,7 +272,7 @@ if menu == "Prévision BTC":
                 bargap=0.35
             )
 
-            # Axe X élargi pour plus d'espace
+            # Axe X élargi
             fig.update_xaxes(
                 showgrid=True,
                 gridcolor='rgba(255,255,255,0.08)',
