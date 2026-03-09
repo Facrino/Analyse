@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 warnings.filterwarnings('ignore')
 st.set_page_config(page_title="BTC Analyse par Source", layout="centered")
-st.title("📈 BTC/USD Prévisions OHLC par Source Individuelle")
+st.title("📈 BTC/USD Prévisions OHLC par Source Individuelle avec Zones Prévision")
 
 # -----------------------------
 # Charger données BTC
@@ -31,7 +31,7 @@ last_price = float(data['Close'].iloc[-1])
 # Fonction récupérer annonces économiques
 # -----------------------------
 def get_economic_announcements():
-    # Les sites peuvent être remplacés par des flux réels
+    # Sites exemples
     sites = {
         "CoinDesk": "https://www.coindesk.com",
         "Investing": "https://www.investing.com/news/cryptocurrency-news",
@@ -40,36 +40,24 @@ def get_economic_announcements():
         "MarketWatch": "https://www.marketwatch.com/investing/cryptocurrency"
     }
 
-    keywords_positive = ["bull","adoption","ETF","growth","approval","institution"]
-    keywords_negative = ["ban","hack","crash","lawsuit","regulation","collapse"]
-
     results = []
 
     for site_name, url in sites.items():
         try:
             r = requests.get(url, timeout=10)
             soup = BeautifulSoup(r.text, "html.parser")
-            titles = soup.find_all("h2")
-            for t in titles[:3]:  # prendre 3 annonces par site pour simplifier
-                text = t.text.strip()
-                text_lower = text.lower()
-                impact = 0
-                for p in keywords_positive:
-                    if p in text_lower:
-                        impact += 1
-                for n in keywords_negative:
-                    if n in text_lower:
-                        impact -= 1
-
-                # Simuler OHLC par source selon l'impact
-                # Ici on multiplie par 0.1% par impact pour créer OHLC unique par source
+            titles = soup.find_all("h2")  # Simplification, dépend du site
+            if not titles:  # Si site structure différente, simuler 1 annonce
+                titles = ["Annonce simulée"]
+            for t in titles[:3]:
+                text = t.text.strip() if hasattr(t,"text") else str(t)
+                impact = 1  # Simuler impact pour tous
+                # Simuler OHLC individuel
                 open_price = last_price * (1 + 0.001*impact)
                 high_price = open_price * 1.001
                 low_price = open_price * 0.999
                 close_price = open_price * (1 + 0.0005*impact)
-
                 time_event = datetime.now() + timedelta(minutes=5*len(results))
-
                 results.append({
                     "Site": site_name,
                     "Date/Heure": time_event.strftime("%Y-%m-%d %H:%M"),
@@ -78,19 +66,18 @@ def get_economic_announcements():
                     "H": round(high_price,2),
                     "L": round(low_price,2),
                     "C": round(close_price,2),
-                    "Impact": impact,
                     "URL": url
                 })
         except:
+            # Si site impossible à récupérer, simuler
             results.append({
                 "Site": site_name,
                 "Date/Heure": "-",
-                "Annonce": "Impossible de récupérer",
-                "O": "-",
-                "H": "-",
-                "L": "-",
-                "C": "-",
-                "Impact": 0,
+                "Annonce": "Impossible récupérer",
+                "O": last_price,
+                "H": last_price*1.001,
+                "L": last_price*0.999,
+                "C": last_price,
                 "URL": url
             })
     return pd.DataFrame(results)
@@ -103,7 +90,7 @@ historique_jours = st.slider("📉 Nombre de jours historiques", 10, 60, 30)
 
 sources_disponibles = ["CoinDesk","Investing","ForexFactory","TradingEconomics","MarketWatch"]
 sources_selectionnees = st.multiselect(
-    "Sélectionner sources pour calcul OHLC",
+    "Sélectionner sources pour OHLC",
     options=sources_disponibles,
     default=sources_disponibles
 )
@@ -117,14 +104,16 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
         model_fit = model.fit()
         forecast_base = model_fit.forecast(steps=forecast_days)
 
-        # Récupérer annonces filtrées par sources sélectionnées
+        # Récupérer annonces filtrées
         df_annonces = get_economic_announcements()
         df_filtered = df_annonces[df_annonces['Site'].isin(sources_selectionnees)]
 
         last_date = pd.to_datetime(data['Date'].iloc[-1])
         future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-        # Construire OHLC par source
+        # ---------------------
+        # Tableau OHLC par source
+        # ---------------------
         st.subheader("📋 OHLC Prévisionnel par Source")
         for site in sources_selectionnees:
             df_site = df_filtered[df_filtered['Site']==site]
@@ -145,7 +134,6 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
             df_candles.columns = df_candles.columns.get_level_values(0)
 
         fig = go.Figure()
-
         # Historique
         fig.add_trace(go.Candlestick(
             x=df_candles['Date'],
@@ -160,7 +148,7 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
             decreasing_fillcolor='#ef5350'
         ))
 
-        # Bougies jaunes pour chaque source
+        # Bougies par source
         colors = ['#FFD700','#FFA500','#FFFF00','#FFDAB9','#FFFACD']
         for i, site in enumerate(sources_selectionnees):
             df_site = df_filtered[df_filtered['Site']==site]
@@ -177,17 +165,20 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
                 decreasing_fillcolor='rgba(255,215,0,0.6)'
             ))
 
-        # Zone prévision
-        fig.add_vrect(
-            x0=last_date,
-            x1=future_dates[-1],
-            fillcolor="rgba(255,215,0,0.08)",
-            layer="below",
-            line_width=0,
-            annotation_text="Zone prévision",
-            annotation_position="top left",
-            annotation_font_color="#FFD700"
-        )
+            # Zone prévision pour chaque source
+            if len(df_site) > 0:
+                start_zone = pd.to_datetime(df_site['Date/Heure']).min()
+                end_zone = pd.to_datetime(df_site['Date/Heure']).max()
+                fig.add_vrect(
+                    x0=start_zone,
+                    x1=end_zone,
+                    fillcolor='rgba(255,215,0,0.08)',
+                    layer='below',
+                    line_width=0,
+                    annotation_text=f"Zone {site}",
+                    annotation_position="top left",
+                    annotation_font_color="#FFD700"
+                )
 
         fig.update_layout(
             title=f'BTC/USD — Historique {historique_jours}j + Prévisions par source',
