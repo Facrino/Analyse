@@ -9,8 +9,11 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# -------------------------
+# Configuration Streamlit
+# -------------------------
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
-st.title("📈 Historique + Prévision BTC/USD (bougies)")
+st.title("📈 Historique + Prévision BTC/USD (bougies de chandelier)")
 
 # -------------------------
 # 1. Télécharger données BTC
@@ -45,7 +48,10 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # 3. Bouton prévision
 # -------------------------
 if st.button("Lancer la prévision"):
-    # Entraînement ARIMA
+
+    # -------------------------
+    # 3a. ARIMA sur Close
+    # -------------------------
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
@@ -55,7 +61,9 @@ if st.button("Lancer la prévision"):
     last_close = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-    # Prévision OHLC simple (range moyen)
+    # -------------------------
+    # 3b. Création OHLC simplifiée pour la prévision
+    # -------------------------
     range_moyen = float((data["High"] - data["Low"]).mean())
     ohlc_forecast = []
     prev_close = last_close
@@ -69,11 +77,11 @@ if st.button("Lancer la prévision"):
     df_forecast = pd.DataFrame(ohlc_forecast)
 
     # -------------------------
-    # Graphique bougies Plotly
+    # 3c. Graphique bougies Plotly
     # -------------------------
     fig = go.Figure()
 
-    # Historique 1 an (vert/rouge)
+    # Historique vert/rouge
     fig.add_trace(go.Candlestick(
         x=data["Date"], open=data["Open"], high=data["High"],
         low=data["Low"], close=data["Close"],
@@ -81,7 +89,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="red"
     ))
 
-    # Prévision (bleu/orange)
+    # Prévision bleu/orange
     fig.add_trace(go.Candlestick(
         x=df_forecast["Date"], open=df_forecast["Open"], high=df_forecast["High"],
         low=df_forecast["Low"], close=df_forecast["Close"],
