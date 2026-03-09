@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
-st.title("📈 Historique + Prévision BTC/USD avec couleurs différentes")
+st.title("📈 Historique + Prévision BTC/USD (vert/rouge & bleu/orange)")
 
 # -------------------------
 # Télécharger données BTC
@@ -20,6 +20,9 @@ def load_data():
     start_date = end_date - timedelta(days=365)
     data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
     data.reset_index(inplace=True)
+    # S'assurer que les colonnes sont float
+    for col in ["Open","High","Low","Close"]:
+        data[col] = pd.to_numeric(data[col], errors="coerce")
     return data
 
 data = load_data()
@@ -35,7 +38,6 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
-    # Modèle ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
@@ -47,7 +49,7 @@ if st.button("Lancer la prévision"):
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
     # -------------------------
-    # Génération OHLC pour prévision
+    # Génération OHLC prévision avec padding
     # -------------------------
     ohlc_forecast = []
     prev_close = last_price
@@ -56,9 +58,9 @@ if st.button("Lancer la prévision"):
     for i in range(forecast_days):
         predicted_close = float(forecast_close.iloc[i])
         predicted_open = prev_close
-        predicted_high = predicted_open + range_moyen*0.75
-        predicted_low = predicted_open - range_moyen*0.55
-
+        # Ajouter un petit padding pour que les bougies soient visibles
+        predicted_high = predicted_open + max(range_moyen*0.75, 0.01)
+        predicted_low  = predicted_open - max(range_moyen*0.55, 0.01)
         ohlc_forecast.append({
             "Date": future_dates[i],
             "Open": float(predicted_open),
@@ -66,22 +68,22 @@ if st.button("Lancer la prévision"):
             "Low": float(predicted_low),
             "Close": float(predicted_close)
         })
-
         prev_close = predicted_close
 
     df_forecast = pd.DataFrame(ohlc_forecast)
 
     # -------------------------
-    # Graphique chandeliers vert/rouge pour historique + bleu/orange pour prévision
+    # Graphique chandeliers
     # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
 
+    # Assurer datetime
     data["Date"] = pd.to_datetime(data["Date"])
     df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
 
     fig = go.Figure()
 
-    # Historique : vert = hausse, rouge = baisse
+    # Historique 1 an
     fig.add_trace(go.Candlestick(
         x=data["Date"],
         open=data["Open"],
@@ -93,7 +95,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="red"
     ))
 
-    # Prévision : bleu = hausse, orange = baisse
+    # Prévision
     fig.add_trace(go.Candlestick(
         x=df_forecast["Date"],
         open=df_forecast["Open"],
@@ -105,11 +107,16 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
+    # Forcer l’échelle Y pour que les bougies soient visibles
+    y_min = min(data["Low"].min(), df_forecast["Low"].min()) * 0.995
+    y_max = max(data["High"].max(), df_forecast["High"].max()) * 1.005
+
     fig.update_layout(
         title="BTC/USD Historique + Prévision",
         xaxis_title="Date",
         yaxis_title="Prix USD",
         xaxis_rangeslider_visible=True,
+        yaxis=dict(range=[y_min, y_max]),
         template="plotly_dark"
     )
 
