@@ -273,3 +273,5 @@ if menu == "Analyse annonces économiques":
     st.subheader("📋 Annonces économiques et impact OHLC pour scalping")
     df_annonces = get_economic_announcements()
     st.dataframe(df_annonces, use_container_width=True)
+    range=[df_candles['Date'].iloc[0] - timedelta(days=2),
+       future_dates[-1] + timedelta(days=5)]
