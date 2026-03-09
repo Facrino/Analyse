@@ -152,6 +152,28 @@ def get_economic_announcements():
     return pd.DataFrame(results)
 
 # -------------------------
+# Fonction pour créer tableau OHLC avec 5 sources par bougie
+# -------------------------
+def generate_forecast_with_sources(future_dates, pred_open, pred_high, pred_low, pred_close, headlines):
+    ohlc_data = []
+    for i, d in enumerate(future_dates):
+        # Prendre 5 sources pour chaque bougie
+        hl_today = headlines[:5]
+        sources = ", ".join([f"[{h['Site']}]({h['URL']})" for h in hl_today])
+        heures = ", ".join([h['Heure'] for h in hl_today])
+
+        ohlc_data.append({
+            "Date": d.strftime("%d/%m/%Y"),
+            "Open": pred_open[i],
+            "High": pred_high[i],
+            "Low": pred_low[i],
+            "Close": pred_close[i],
+            "Sources": sources,
+            "Heures": heures
+        })
+    return pd.DataFrame(ohlc_data)
+
+# -------------------------
 # Option 1 : Prévision BTC
 # -------------------------
 if menu == "Prévision BTC":
@@ -182,36 +204,23 @@ if menu == "Prévision BTC":
             pred_low = [c*0.99 for c in pred_close]
 
             # -------------------------
-            # Afficher headlines
+            # Tableau prévision OHLC avec 5 sources
             # -------------------------
-            st.subheader("📰 Headlines BTC analysées avec source et heure")
-            for h in headlines[:forecast_days]:
-                st.markdown(f"• **{h['Heure']}** — [{h['Site']}]({h['URL']}): {h['Titre']}")
+            df_forecast = generate_forecast_with_sources(
+                future_dates, pred_open, pred_high, pred_low, pred_close, headlines
+            )
 
-            # -------------------------
-            # Tableau prévision OHLC avec source et heure
-            # -------------------------
-            df_forecast = pd.DataFrame({
-                "Date": [d.strftime("%d/%m/%Y") for d in future_dates],
-                "Open": pred_open,
-                "High": pred_high,
-                "Low": pred_low,
-                "Close": pred_close,
-                "Source": [h['Site'] for h in headlines[:forecast_days]],
-                "Heure": [h['Heure'] for h in headlines[:forecast_days]],
-                "URL": [h['URL'] for h in headlines[:forecast_days]]
-            })
-
-            st.subheader("📋 Tableau prévision OHLC avec source et heure")
+            st.subheader("📋 Tableau prévision OHLC avec 5 sources et heures")
             for i in range(len(df_forecast)):
                 st.markdown(
-                    f"**{df_forecast['Date'][i]}** | O: {df_forecast['Open'][i]:.2f} | H: {df_forecast['High'][i]:.2f} | "
-                    f"L: {df_forecast['Low'][i]:.2f} | C: {df_forecast['Close'][i]:.2f} | "
-                    f"Heure: {df_forecast['Heure'][i]} | Source: [{df_forecast['Source'][i]}]({df_forecast['URL'][i]})"
+                    f"**{df_forecast['Date'][i]}** | O: {df_forecast['Open'][i]:.2f} | "
+                    f"H: {df_forecast['High'][i]:.2f} | L: {df_forecast['Low'][i]:.2f} | "
+                    f"C: {df_forecast['Close'][i]:.2f} | Heures: {df_forecast['Heures'][i]} | "
+                    f"Sources: {df_forecast['Sources'][i]}"
                 )
 
             # -------------------------
-            # Graphique chandelier élargi avec historique visible
+            # Graphique chandelier
             # -------------------------
             df_candles = data.tail(historique_jours).copy()
             if isinstance(df_candles.columns, pd.MultiIndex):
