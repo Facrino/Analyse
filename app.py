@@ -27,8 +27,7 @@ def load_data():
     data.reset_index(inplace=True)
 
     # Vérifier colonnes OHLC
-    required_cols = ["Open", "High", "Low", "Close"]
-    for col in required_cols:
+    for col in ["Open","High","Low","Close"]:
         if col not in data.columns:
             st.error(f"⚠️ Colonne manquante : {col}")
             return pd.DataFrame()
@@ -61,8 +60,7 @@ if st.button("Lancer la prévision"):
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
     # Calculer range_moyen correctement
-    range_moyen = (data["High"] - data["Low"]).mean()
-    range_moyen = float(range_moyen)  # convertir en float pour éviter ValueError
+    range_moyen = float((data["High"] - data["Low"]).mean())
 
     # Générer OHLC prévision
     ohlc_forecast = []
@@ -100,11 +98,20 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    y_min = min(data["Low"].min(), df_forecast["Low"].min()) * 0.995
-    y_max = max(data["High"].max(), df_forecast["High"].max()) * 1.005
-    fig.update_layout(xaxis_rangeslider_visible=True, yaxis=dict(range=[y_min, y_max]), template="plotly_dark")
+    # Forcer les valeurs float pour éviter ValueError
+    y_min = float(min(data["Low"].min(), df_forecast["Low"].min())) * 0.995
+    y_max = float(max(data["High"].max(), df_forecast["High"].max())) * 1.005
+
+    fig.update_layout(
+        xaxis_rangeslider_visible=True,
+        yaxis=dict(range=[y_min, y_max]),
+        template="plotly_dark"
+    )
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # -------------------------
+    # Tableau OHLC prévision
+    # -------------------------
     st.subheader("Tableau OHLC prévision")
     st.dataframe(df_forecast)
