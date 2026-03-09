@@ -9,9 +9,8 @@ import requests
 from bs4 import BeautifulSoup
 
 warnings.filterwarnings('ignore')
-
-st.set_page_config(page_title="BTC Analyse", layout="centered")
-st.title("📈 BTC/USD Prévisions dynamiques selon sources économiques")
+st.set_page_config(page_title="BTC Analyse par Source", layout="centered")
+st.title("📈 BTC/USD Prévisions OHLC par Source Individuelle")
 
 # -----------------------------
 # Charger données BTC
@@ -32,6 +31,7 @@ last_price = float(data['Close'].iloc[-1])
 # Fonction récupérer annonces économiques
 # -----------------------------
 def get_economic_announcements():
+    # Les sites peuvent être remplacés par des flux réels
     sites = {
         "CoinDesk": "https://www.coindesk.com",
         "Investing": "https://www.investing.com/news/cryptocurrency-news",
@@ -50,7 +50,7 @@ def get_economic_announcements():
             r = requests.get(url, timeout=10)
             soup = BeautifulSoup(r.text, "html.parser")
             titles = soup.find_all("h2")
-            for t in titles[:5]:
+            for t in titles[:3]:  # prendre 3 annonces par site pour simplifier
                 text = t.text.strip()
                 text_lower = text.lower()
                 impact = 0
@@ -61,12 +61,23 @@ def get_economic_announcements():
                     if n in text_lower:
                         impact -= 1
 
+                # Simuler OHLC par source selon l'impact
+                # Ici on multiplie par 0.1% par impact pour créer OHLC unique par source
+                open_price = last_price * (1 + 0.001*impact)
+                high_price = open_price * 1.001
+                low_price = open_price * 0.999
+                close_price = open_price * (1 + 0.0005*impact)
+
                 time_event = datetime.now() + timedelta(minutes=5*len(results))
 
                 results.append({
                     "Site": site_name,
                     "Date/Heure": time_event.strftime("%Y-%m-%d %H:%M"),
                     "Annonce": text,
+                    "O": round(open_price,2),
+                    "H": round(high_price,2),
+                    "L": round(low_price,2),
+                    "C": round(close_price,2),
                     "Impact": impact,
                     "URL": url
                 })
@@ -75,63 +86,55 @@ def get_economic_announcements():
                 "Site": site_name,
                 "Date/Heure": "-",
                 "Annonce": "Impossible de récupérer",
+                "O": "-",
+                "H": "-",
+                "L": "-",
+                "C": "-",
                 "Impact": 0,
                 "URL": url
             })
     return pd.DataFrame(results)
 
 # -----------------------------
-# Option Prévision BTC
+# Paramètres utilisateur
 # -----------------------------
-forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", 1, 14, 7)
-historique_jours = st.slider("📉 Nombre de jours historiques à afficher", 10, 60, 30)
+forecast_days = st.slider("🗓️ Combien de jours prédire ?", 1, 14, 7)
+historique_jours = st.slider("📉 Nombre de jours historiques", 10, 60, 30)
 
-# Choix sources
 sources_disponibles = ["CoinDesk","Investing","ForexFactory","TradingEconomics","MarketWatch"]
 sources_selectionnees = st.multiselect(
-    "Sélectionnez les sources à utiliser pour calcul OHLC",
+    "Sélectionner sources pour calcul OHLC",
     options=sources_disponibles,
     default=sources_disponibles
 )
 
-if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
+if st.button(f"Lancer prévision {forecast_days} jours"):
 
-    with st.spinner("Calcul ARIMA + OHLC dynamique selon sources..."):
+    with st.spinner("Prévision OHLC par source individuelle..."):
 
-        # Prévision ARIMA
+        # Prévision ARIMA base
         model = ARIMA(df_train['Close'], order=(5,1,0))
         model_fit = model.fit()
         forecast_base = model_fit.forecast(steps=forecast_days)
 
-        # Récupérer annonces filtrées selon sources sélectionnées
+        # Récupérer annonces filtrées par sources sélectionnées
         df_annonces = get_economic_announcements()
         df_filtered = df_annonces[df_annonces['Site'].isin(sources_selectionnees)]
 
-        # Calcul impact combiné pour chaque jour
-        # Ici on suppose que l'impact total est réparti uniformément sur tous les jours prévisionnels
-        impact_total = df_filtered['Impact'].sum() * 0.002
-
-        # Construire OHLC prévisionnel
         last_date = pd.to_datetime(data['Date'].iloc[-1])
         future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-        pred_close = list(forecast_base * (1 + impact_total))
-        pred_open = [last_price] + pred_close[:-1]
-        pred_high = [c*1.01 for c in pred_close]
-        pred_low = [c*0.99 for c in pred_close]
-
-        # ---------------------
-        # Tableau prévision avec liens cliquables
-        # ---------------------
-        st.subheader("📋 OHLC prévisionnel dynamique selon sources sélectionnées")
-        for i in range(forecast_days):
-            sources_html = " | ".join([f'<a href="{url}" target="_blank">{site}</a>' for site, url in zip(df_filtered['Site'], df_filtered['URL'])])
-            heures = ", ".join(df_filtered['Date/Heure'])
-            st.markdown(
-                f"**{future_dates[i].strftime('%d/%m/%Y')}** | O: {pred_open[i]:.2f} | H: {pred_high[i]:.2f} | L: {pred_low[i]:.2f} | C: {pred_close[i]:.2f} | Heures: {heures}",
-                unsafe_allow_html=True
-            )
-            st.markdown(sources_html, unsafe_allow_html=True)
+        # Construire OHLC par source
+        st.subheader("📋 OHLC Prévisionnel par Source")
+        for site in sources_selectionnees:
+            df_site = df_filtered[df_filtered['Site']==site]
+            st.markdown(f"### 🔹 Source : {site}")
+            for i, row in df_site.iterrows():
+                st.markdown(
+                    f"**{row['Date/Heure']}** | O: {row['O']} | H: {row['H']} | L: {row['L']} | C: {row['C']} | Annonce: {row['Annonce']}",
+                    unsafe_allow_html=True
+                )
+                st.markdown(f'<a href="{row["URL"]}" target="_blank">Voir l’annonce complète</a>', unsafe_allow_html=True)
             st.markdown("---")
 
         # ---------------------
@@ -157,19 +160,22 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             decreasing_fillcolor='#ef5350'
         ))
 
-        # Prévision bougies jaunes
-        fig.add_trace(go.Candlestick(
-            x=future_dates,
-            open=pred_open,
-            high=pred_high,
-            low=pred_low,
-            close=pred_close,
-            name='Prévision BTC',
-            increasing_line_color='#FFD700',
-            decreasing_line_color='#FFD700',
-            increasing_fillcolor='rgba(255,215,0,0.6)',
-            decreasing_fillcolor='rgba(255,215,0,0.6)'
-        ))
+        # Bougies jaunes pour chaque source
+        colors = ['#FFD700','#FFA500','#FFFF00','#FFDAB9','#FFFACD']
+        for i, site in enumerate(sources_selectionnees):
+            df_site = df_filtered[df_filtered['Site']==site]
+            fig.add_trace(go.Candlestick(
+                x=pd.to_datetime(df_site['Date/Heure']),
+                open=df_site['O'],
+                high=df_site['H'],
+                low=df_site['L'],
+                close=df_site['C'],
+                name=f'Prévision {site}',
+                increasing_line_color=colors[i%len(colors)],
+                decreasing_line_color=colors[i%len(colors)],
+                increasing_fillcolor='rgba(255,215,0,0.6)',
+                decreasing_fillcolor='rgba(255,215,0,0.6)'
+            ))
 
         # Zone prévision
         fig.add_vrect(
@@ -184,25 +190,14 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
         )
 
         fig.update_layout(
-            title=f'BTC/USD — Historique {historique_jours}j + Prévision {forecast_days} jours',
+            title=f'BTC/USD — Historique {historique_jours}j + Prévisions par source',
             xaxis_title='Date',
             yaxis_title='Prix USD',
             template='plotly_dark',
             xaxis_rangeslider_visible=False,
-            height=550,
+            height=600,
             plot_bgcolor='#1e1e2f',
             paper_bgcolor='#1e1e2f'
-        )
-
-        fig.update_xaxes(
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.08)',
-            range=[df_candles['Date'].iloc[0] - timedelta(days=2), future_dates[-1] + timedelta(days=5)]
-        )
-        fig.update_yaxes(
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.08)',
-            tickprefix='$'
         )
 
         st.plotly_chart(fig, use_container_width=True)
