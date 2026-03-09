@@ -147,6 +147,7 @@ def get_economic_announcements():
 if menu == "Prévision BTC":
 
     forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", 1, 14, 7)
+    historique_jours = st.slider("📉 Nombre de jours historiques à afficher", 10, 60, 30)
 
     if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
@@ -193,7 +194,7 @@ if menu == "Prévision BTC":
             # -------------------------
             # Graphique chandelier élargi
             # -------------------------
-            df_candles = data.tail(60).copy()
+            df_candles = data.tail(historique_jours).copy()
             fig = go.Figure()
 
             # Historique
@@ -203,7 +204,7 @@ if menu == "Prévision BTC":
                 high=df_candles['High'],
                 low=df_candles['Low'],
                 close=df_candles['Close'],
-                name='Historique (60j)',
+                name='Historique',
                 increasing_line_color='#26a69a',
                 decreasing_line_color='#ef5350',
                 increasing_fillcolor='#26a69a',
@@ -239,7 +240,7 @@ if menu == "Prévision BTC":
 
             # Layout avec plus d'espace
             fig.update_layout(
-                title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days} jours',
+                title=f'BTC/USD — Historique {historique_jours}j + Prévision {forecast_days} jours',
                 xaxis_title='Date',
                 yaxis_title='Prix USD',
                 template='plotly_dark',
@@ -273,5 +274,3 @@ if menu == "Analyse annonces économiques":
     st.subheader("📋 Annonces économiques et impact OHLC pour scalping")
     df_annonces = get_economic_announcements()
     st.dataframe(df_annonces, use_container_width=True)
-    range=[df_candles['Date'].iloc[0] - timedelta(days=2),
-       future_dates[-1] + timedelta(days=5)]
