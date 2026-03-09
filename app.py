@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
-st.title("📈 Historique + Prévision BTC/USD (bougies OHLC)")
+st.title("📈 Historique + Prévision BTC/USD (bougies)")
 
 # -------------------------
 # Télécharger données BTC
@@ -19,19 +19,15 @@ def load_data():
     start_date = end_date - timedelta(days=365)
 
     data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
-
     if data.empty:
-        st.error("⚠️ Aucune donnée récupérée depuis yfinance")
+        st.error("⚠️ Aucune donnée récupérée")
         return pd.DataFrame()
-
+    
     data.reset_index(inplace=True)
-
-    # Vérifier colonnes OHLC
     for col in ["Open","High","Low","Close"]:
         if col not in data.columns:
             st.error(f"⚠️ Colonne manquante : {col}")
             return pd.DataFrame()
-
     return data
 
 data = load_data()
@@ -59,10 +55,8 @@ if st.button("Lancer la prévision"):
     last_close = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-    # Calculer range_moyen correctement
+    # Générer bougies prévision simples
     range_moyen = float((data["High"] - data["Low"]).mean())
-
-    # Générer OHLC prévision
     ohlc_forecast = []
     prev_close = last_close
     for i in range(forecast_days):
@@ -72,14 +66,12 @@ if st.button("Lancer la prévision"):
         low  = open_ - max(range_moyen*0.55, 0.01)
         ohlc_forecast.append({"Date": future_dates[i], "Open": open_, "High": high, "Low": low, "Close": close})
         prev_close = close
-
     df_forecast = pd.DataFrame(ohlc_forecast)
 
     # -------------------------
     # Graphique chandeliers
     # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
-
     fig = go.Figure()
 
     # Historique vert/rouge
@@ -98,20 +90,8 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    # Forcer les valeurs float pour éviter ValueError
     y_min = float(min(data["Low"].min(), df_forecast["Low"].min())) * 0.995
     y_max = float(max(data["High"].max(), df_forecast["High"].max())) * 1.005
-
-    fig.update_layout(
-        xaxis_rangeslider_visible=True,
-        yaxis=dict(range=[y_min, y_max]),
-        template="plotly_dark"
-    )
+    fig.update_layout(xaxis_rangeslider_visible=True, yaxis=dict(range=[y_min, y_max]), template="plotly_dark")
 
     st.plotly_chart(fig, use_container_width=True)
-
-    # -------------------------
-    # Tableau OHLC prévision
-    # -------------------------
-    st.subheader("Tableau OHLC prévision")
-    st.dataframe(df_forecast)
