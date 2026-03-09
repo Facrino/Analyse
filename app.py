@@ -1,6 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from statsmodels.tsa.arima.model import ARIMA
 from datetime import date, timedelta
@@ -8,6 +9,9 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# -------------------------
+# Configuration Streamlit
+# -------------------------
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
 st.title("📈 Historique + Prévision BTC/USD (bougies)")
 
@@ -46,16 +50,18 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
+    # --- Modèle ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
     forecast_close = model_fit.forecast(steps=forecast_days)
 
+    # --- Dates futures
     last_date = pd.to_datetime(data["Date"].iloc[-1])
     last_close = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-    # Générer bougies prévision simples
+    # --- Prévision simple OHLC pour bougies
     range_moyen = float((data["High"] - data["Low"]).mean())
     ohlc_forecast = []
     prev_close = last_close
@@ -90,8 +96,14 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    y_min = float(min(data["Low"].min(), df_forecast["Low"].min())) * 0.995
-    y_max = float(max(data["High"].max(), df_forecast["High"].max())) * 1.005
-    fig.update_layout(xaxis_rangeslider_visible=True, yaxis=dict(range=[y_min, y_max]), template="plotly_dark")
+    # --- Calcul sécurisé yaxis pour éviter ValueError ---
+    y_min = np.nanmin([data["Low"].values.min(), df_forecast["Low"].values.min()]) * 0.995
+    y_max = np.nanmax([data["High"].values.max(), df_forecast["High"].values.max()]) * 1.005
+
+    fig.update_layout(
+        xaxis_rangeslider_visible=True,
+        yaxis=dict(range=[y_min, y_max]),
+        template="plotly_dark"
+    )
 
     st.plotly_chart(fig, use_container_width=True)
