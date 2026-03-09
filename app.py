@@ -45,10 +45,10 @@ last_price = float(data['Close'].iloc[-1])
 def analyse_news_btc():
     sites = {
         "CoinDesk": "https://www.coindesk.com",
-        "CoinTelegraph": "https://cointelegraph.com",
-        "CryptoSlate": "https://cryptoslate.com",
-        "BitcoinMagazine": "https://bitcoinmagazine.com",
-        "Decrypt": "https://decrypt.co"
+        "Investing": "https://www.investing.com/news/cryptocurrency-news",
+        "ForexFactory": "https://www.forexfactory.com/calendar",
+        "TradingEconomics": "https://tradingeconomics.com/calendar",
+        "MarketWatch": "https://www.marketwatch.com/investing/cryptocurrency"
     }
 
     keywords_positive = ["adoption","bull","institution","ETF","approval","growth"]
@@ -154,11 +154,21 @@ def get_economic_announcements():
 # -------------------------
 # Fonction pour créer tableau OHLC avec 5 sources par bougie
 # -------------------------
-def generate_forecast_with_sources(future_dates, pred_open, pred_high, pred_low, pred_close, headlines):
+def generate_forecast_with_5_sources(future_dates, pred_open, pred_high, pred_low, pred_close, headlines):
     ohlc_data = []
+    sites_to_use = ["CoinDesk","Investing","ForexFactory","TradingEconomics","MarketWatch"]
+
     for i, d in enumerate(future_dates):
-        # Prendre 5 sources pour chaque bougie
-        hl_today = headlines[:5]
+        hl_today = []
+        for site in sites_to_use:
+            # Chercher la première headline correspondant au site
+            site_hl = next((h for h in headlines if h["Site"] == site), None)
+            if site_hl:
+                hl_today.append(site_hl)
+            else:
+                hl_today.append({"Site": site, "URL":"#", "Heure":"-"})
+
+        # Fusionner sources et heures
         sources = ", ".join([f"[{h['Site']}]({h['URL']})" for h in hl_today])
         heures = ", ".join([h['Heure'] for h in hl_today])
 
@@ -171,6 +181,7 @@ def generate_forecast_with_sources(future_dates, pred_open, pred_high, pred_low,
             "Sources": sources,
             "Heures": heures
         })
+
     return pd.DataFrame(ohlc_data)
 
 # -------------------------
@@ -206,7 +217,7 @@ if menu == "Prévision BTC":
             # -------------------------
             # Tableau prévision OHLC avec 5 sources
             # -------------------------
-            df_forecast = generate_forecast_with_sources(
+            df_forecast = generate_forecast_with_5_sources(
                 future_dates, pred_open, pred_high, pred_low, pred_close, headlines
             )
 
