@@ -12,7 +12,7 @@ st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
 st.title("📈 Historique + Prévision BTC/USD (vert/rouge & bleu/orange)")
 
 # -------------------------
-# Télécharger données BTC
+# Charger données BTC
 # -------------------------
 @st.cache_data
 def load_data():
@@ -22,29 +22,31 @@ def load_data():
     try:
         data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
     except Exception as e:
-        st.error(f"Erreur lors du téléchargement des données : {e}")
+        st.error(f"Erreur téléchargement BTC : {e}")
         return pd.DataFrame()
 
     data.reset_index(inplace=True)
 
-    # Vérifier que toutes les colonnes nécessaires existent
-    required_cols = ["Open","High","Low","Close"]
+    # Si colonnes MultiIndex, aplatir
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = ["_".join(col).strip() if isinstance(col, tuple) else col for col in data.columns]
+
+    # Colonnes nécessaires
+    required_cols = ["Open", "High", "Low", "Close"]
     for col in required_cols:
         if col not in data.columns:
-            st.error(f"La colonne {col} est manquante dans les données téléchargées !")
+            st.error(f"Colonne manquante : {col}")
             return pd.DataFrame()
-        else:
-            # Conversion sécurisée en float
-            data[col] = pd.to_numeric(data[col], errors="coerce")
+        # Conversion sécurisée
+        data[col] = pd.to_numeric(data[col], errors="coerce")
 
     return data
 
 data = load_data()
-
 if data.empty:
-    st.stop()  # Arrêter l'app si les données n'ont pas été correctement chargées
+    st.stop()
 else:
-    st.success("✅ Données BTC chargées avec succès !")
+    st.success("✅ Données BTC chargées")
 
 # -------------------------
 # Slider prévision
@@ -56,7 +58,6 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
-    # Préparer le modèle ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
@@ -66,9 +67,7 @@ if st.button("Lancer la prévision"):
     last_price = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-    # -------------------------
-    # Génération OHLC pour prévision avec padding
-    # -------------------------
+    # Génération OHLC prévision
     ohlc_forecast = []
     prev_close = last_price
     range_moyen = (data["High"] - data["Low"]).mean()
@@ -91,9 +90,7 @@ if st.button("Lancer la prévision"):
 
     df_forecast = pd.DataFrame(ohlc_forecast)
 
-    # -------------------------
     # Graphique chandeliers
-    # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
 
     data["Date"] = pd.to_datetime(data["Date"])
@@ -101,7 +98,7 @@ if st.button("Lancer la prévision"):
 
     fig = go.Figure()
 
-    # Historique : vert = hausse, rouge = baisse
+    # Historique vert/rouge
     fig.add_trace(go.Candlestick(
         x=data["Date"],
         open=data["Open"],
@@ -113,7 +110,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="red"
     ))
 
-    # Prévision : bleu = hausse, orange = baisse
+    # Prévision bleu/orange
     fig.add_trace(go.Candlestick(
         x=df_forecast["Date"],
         open=df_forecast["Open"],
@@ -125,7 +122,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    # Forcer l’échelle Y pour que toutes les bougies soient visibles
+    # Forcer l’échelle Y
     y_min = min(data["Low"].min(), df_forecast["Low"].min()) * 0.995
     y_max = max(data["High"].max(), df_forecast["High"].max()) * 1.005
 
@@ -140,8 +137,6 @@ if st.button("Lancer la prévision"):
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # -------------------------
     # Tableau prévision
-    # -------------------------
     st.subheader("Tableau prévision OHLC")
     st.dataframe(df_forecast)
