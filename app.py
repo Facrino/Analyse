@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 st.set_page_config(page_title="BTC Analyse", layout="centered")
 st.title("📈 Prévision BTC/USD (ARIMA)")
 
-# 1. Téléchargement des données
+# 1. Télécharger données
 @st.cache_data
 def load_data():
     end_date = date.today()
@@ -24,66 +24,36 @@ def load_data():
 data = load_data()
 st.success("✅ Données actuelles téléchargées avec succès !")
 
-# 2. Choix du nombre de jours par l'utilisateur
-forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", min_value=1, max_value=14, value=7)
+# Choix jours prévision
+forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?",1,14,7)
 
 if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
+
     with st.spinner("L'IA calcule les prévisions mathématiques..."):
 
-        # 3. Entraînement du modèle ARIMA
         df_train = data.set_index('Date')
-        model = ARIMA(df_train['Close'], order=(5, 1, 0))
+
+        model = ARIMA(df_train['Close'], order=(5,1,0))
         model_fit = model.fit()
+
         forecast = model_fit.forecast(steps=forecast_days)
 
-        # Dernière date et dernier prix
         last_date = pd.to_datetime(data['Date'].iloc[-1])
         last_price = float(data['Close'].iloc[-1])
 
-        # Dates futures
-        future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days + 1)]
-        dates_formattees = [d.strftime('%d/%m/%Y') for d in future_dates]
-
-        # Evolution du prix
-        prix_liste = [last_price] + list(forecast)
-        evolution = [prix_liste[i] - prix_liste[i-1] for i in range(1, len(prix_liste))]
+        future_dates = [last_date + timedelta(days=i) for i in range(1,forecast_days+1)]
 
         st.divider()
 
-        # --- CARTES VISUELLES ---
-        st.subheader("🔥 Focus sur les 3 prochains jours")
-        cols = st.columns(min(3, forecast_days))
-        for i in range(min(3, forecast_days)):
-            cols[i].metric(
-                label=dates_formattees[i],
-                value=f"{forecast.iloc[i]:.0f} $",
-                delta=f"{evolution[i]:.2f} $"
-            )
-
-        st.divider()
-
-        # --- TABLEAU ---
-        st.subheader("📋 Tableau détaillé (Jour par jour)")
-
-        df_result = pd.DataFrame({
-            "Date": dates_formattees,
-            "Prix Prévu (USD)": [round(p, 2) for p in forecast],
-            "Évolution journalière": [round(e, 2) for e in evolution]
-        })
-
-        st.dataframe(df_result, use_container_width=True)
-
-        st.divider()
-
-        # -------------------------------------------------------
+        # ------------------------
         # GRAPHIQUE CHANDELIER
-        # -------------------------------------------------------
+        # ------------------------
 
         st.subheader("🕯️ Graphique Chandelier BTC/USD")
 
         df_candles = data.tail(60).copy()
 
-        if isinstance(df_candles.columns, pd.MultiIndex):
+        if isinstance(df_candles.columns,pd.MultiIndex):
             df_candles.columns = df_candles.columns.get_level_values(0)
 
         fig = go.Figure()
@@ -99,84 +69,84 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             increasing_line_color='#26a69a',
             decreasing_line_color='#ef5350',
             increasing_fillcolor='#26a69a',
-            decreasing_fillcolor='#ef5350',
+            decreasing_fillcolor='#ef5350'
         ))
 
-        # --------------------------------------------------
-        # Création des OHLC pour la prévision
-        # --------------------------------------------------
+        # --------------------------------
+        # Construction bougies prévision
+        # --------------------------------
 
-        pred_open = [last_price] + list(forecast[:-1])
         pred_close = list(forecast)
 
-        pred_high = [c * 1.01 for c in pred_close]
-        pred_low = [c * 0.99 for c in pred_close]
+        pred_open = [last_price] + pred_close[:-1]
 
-        customdata = list(zip(pred_open, pred_high, pred_low, pred_close))
+        pred_high = [c*1.01 for c in pred_close]
+        pred_low = [c*0.99 for c in pred_close]
 
-        # 2️⃣ Ligne de prévision ARIMA
-        fig.add_trace(go.Scatter(
+        # 2️⃣ Chandeliers de prévision jaunes
+        fig.add_trace(go.Candlestick(
+
             x=future_dates,
-            y=pred_close,
-            mode='lines+markers',
-            name='Prévision ARIMA',
-            line=dict(color='#FFD700', width=2, dash='dash'),
-            marker=dict(size=7, color='#FFD700'),
+            open=pred_open,
+            high=pred_high,
+            low=pred_low,
+            close=pred_close,
 
-            customdata=customdata,
+            name='Prévision',
+
+            increasing_line_color='#FFD700',
+            decreasing_line_color='#FFD700',
+
+            increasing_fillcolor='rgba(255,215,0,0.6)',
+            decreasing_fillcolor='rgba(255,215,0,0.6)',
 
             hovertemplate=
-            "<b>Date:</b> %{x}<br>" +
-            "Open: $%{customdata[0]:.2f}<br>" +
-            "High: $%{customdata[1]:.2f}<br>" +
-            "Low: $%{customdata[2]:.2f}<br>" +
-            "Close: $%{customdata[3]:.2f}" +
-            "<extra>Prévision</extra>"
+            "<b>Date:</b> %{x}<br>"+
+            "Open: $%{open:.2f}<br>"+
+            "High: $%{high:.2f}<br>"+
+            "Low: $%{low:.2f}<br>"+
+            "Close: $%{close:.2f}<extra>Prévision</extra>"
         ))
 
-        # 3️⃣ Zone jaune de prévision
+        # 3️⃣ Zone jaune prévision
         fig.add_vrect(
             x0=last_date,
             x1=future_dates[-1],
-            fillcolor="rgba(255, 215, 0, 0.07)",
+            fillcolor="rgba(255,215,0,0.07)",
             layer="below",
             line_width=0,
             annotation_text="Zone prévision",
             annotation_position="top left",
-            annotation_font_color="#FFD700",
+            annotation_font_color="#FFD700"
         )
 
-        # 4️⃣ Style graphique
+        # Style graphique
         fig.update_layout(
-            title=dict(
-                text=f'BTC/USD — Chandelier 60j + Prévision {forecast_days}j (ARIMA)',
-                font=dict(size=16)
-            ),
+
+            title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days}j',
+
             xaxis_title='Date',
-            yaxis_title='Prix en USD',
-            xaxis_rangeslider_visible=False,
+            yaxis_title='Prix USD',
+
             template='plotly_dark',
-            legend=dict(
-                orientation='h',
-                yanchor='bottom',
-                y=1.02,
-                xanchor='right',
-                x=1
-            ),
+
+            xaxis_rangeslider_visible=False,
+
             height=550,
+
             plot_bgcolor='#1e1e2f',
-            paper_bgcolor='#1e1e2f',
+            paper_bgcolor='#1e1e2f'
         )
 
         fig.update_xaxes(
             showgrid=True,
-            gridcolor='rgba(255,255,255,0.08)',
+            gridcolor='rgba(255,255,255,0.08)'
         )
 
         fig.update_yaxes(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.08)',
-            tickprefix='$',
+            tickprefix='$'
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig,use_container_width=True)
