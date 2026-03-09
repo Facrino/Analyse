@@ -18,15 +18,33 @@ st.title("📈 Historique + Prévision BTC/USD (vert/rouge & bleu/orange)")
 def load_data():
     end_date = date.today()
     start_date = end_date - timedelta(days=365)
-    data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
+
+    try:
+        data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
+    except Exception as e:
+        st.error(f"Erreur lors du téléchargement des données : {e}")
+        return pd.DataFrame()
+
     data.reset_index(inplace=True)
-    # S'assurer que les colonnes sont float
-    for col in ["Open","High","Low","Close"]:
-        data[col] = pd.to_numeric(data[col], errors="coerce")
+
+    # Vérifier que toutes les colonnes nécessaires existent
+    required_cols = ["Open","High","Low","Close"]
+    for col in required_cols:
+        if col not in data.columns:
+            st.error(f"La colonne {col} est manquante dans les données téléchargées !")
+            return pd.DataFrame()
+        else:
+            # Conversion sécurisée en float
+            data[col] = pd.to_numeric(data[col], errors="coerce")
+
     return data
 
 data = load_data()
-st.success("Données BTC chargées")
+
+if data.empty:
+    st.stop()  # Arrêter l'app si les données n'ont pas été correctement chargées
+else:
+    st.success("✅ Données BTC chargées avec succès !")
 
 # -------------------------
 # Slider prévision
@@ -38,6 +56,7 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
+    # Préparer le modèle ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
@@ -45,11 +64,10 @@ if st.button("Lancer la prévision"):
 
     last_date = pd.to_datetime(data["Date"].iloc[-1])
     last_price = float(data["Close"].iloc[-1])
-
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
     # -------------------------
-    # Génération OHLC prévision avec padding
+    # Génération OHLC pour prévision avec padding
     # -------------------------
     ohlc_forecast = []
     prev_close = last_price
@@ -58,16 +76,17 @@ if st.button("Lancer la prévision"):
     for i in range(forecast_days):
         predicted_close = float(forecast_close.iloc[i])
         predicted_open = prev_close
-        # Ajouter un petit padding pour que les bougies soient visibles
         predicted_high = predicted_open + max(range_moyen*0.75, 0.01)
         predicted_low  = predicted_open - max(range_moyen*0.55, 0.01)
+
         ohlc_forecast.append({
             "Date": future_dates[i],
-            "Open": float(predicted_open),
-            "High": float(predicted_high),
-            "Low": float(predicted_low),
-            "Close": float(predicted_close)
+            "Open": predicted_open,
+            "High": predicted_high,
+            "Low": predicted_low,
+            "Close": predicted_close
         })
+
         prev_close = predicted_close
 
     df_forecast = pd.DataFrame(ohlc_forecast)
@@ -77,13 +96,12 @@ if st.button("Lancer la prévision"):
     # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
 
-    # Assurer datetime
     data["Date"] = pd.to_datetime(data["Date"])
     df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
 
     fig = go.Figure()
 
-    # Historique 1 an
+    # Historique : vert = hausse, rouge = baisse
     fig.add_trace(go.Candlestick(
         x=data["Date"],
         open=data["Open"],
@@ -95,7 +113,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="red"
     ))
 
-    # Prévision
+    # Prévision : bleu = hausse, orange = baisse
     fig.add_trace(go.Candlestick(
         x=df_forecast["Date"],
         open=df_forecast["Open"],
@@ -107,7 +125,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    # Forcer l’échelle Y pour que les bougies soient visibles
+    # Forcer l’échelle Y pour que toutes les bougies soient visibles
     y_min = min(data["Low"].min(), df_forecast["Low"].min()) * 0.995
     y_max = max(data["High"].max(), df_forecast["High"].max()) * 1.005
 
