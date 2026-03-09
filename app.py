@@ -5,12 +5,11 @@ import plotly.graph_objects as go
 from statsmodels.tsa.arima.model import ARIMA
 from datetime import date, timedelta, datetime
 import warnings
-import requests
-from bs4 import BeautifulSoup
+import random
 
 warnings.filterwarnings('ignore')
 st.set_page_config(page_title="BTC Analyse par Source", layout="centered")
-st.title("📈 BTC/USD Prévisions OHLC par Source Individuelle avec Zones Prévision")
+st.title("📈 BTC/USD Prévisions OHLC par Source Individuelle")
 
 # -----------------------------
 # Charger données BTC
@@ -28,59 +27,31 @@ df_train = data.set_index('Date')
 last_price = float(data['Close'].iloc[-1])
 
 # -----------------------------
-# Fonction récupérer annonces économiques
+# Générer OHLC unique par source
 # -----------------------------
-def get_economic_announcements():
-    # Sites exemples
-    sites = {
-        "CoinDesk": "https://www.coindesk.com",
-        "Investing": "https://www.investing.com/news/cryptocurrency-news",
-        "ForexFactory": "https://www.forexfactory.com/calendar",
-        "TradingEconomics": "https://tradingeconomics.com/calendar",
-        "MarketWatch": "https://www.marketwatch.com/investing/cryptocurrency"
-    }
-
-    results = []
-
-    for site_name, url in sites.items():
-        try:
-            r = requests.get(url, timeout=10)
-            soup = BeautifulSoup(r.text, "html.parser")
-            titles = soup.find_all("h2")  # Simplification, dépend du site
-            if not titles:  # Si site structure différente, simuler 1 annonce
-                titles = ["Annonce simulée"]
-            for t in titles[:3]:
-                text = t.text.strip() if hasattr(t,"text") else str(t)
-                impact = 1  # Simuler impact pour tous
-                # Simuler OHLC individuel
-                open_price = last_price * (1 + 0.001*impact)
-                high_price = open_price * 1.001
-                low_price = open_price * 0.999
-                close_price = open_price * (1 + 0.0005*impact)
-                time_event = datetime.now() + timedelta(minutes=5*len(results))
-                results.append({
-                    "Site": site_name,
-                    "Date/Heure": time_event.strftime("%Y-%m-%d %H:%M"),
-                    "Annonce": text,
-                    "O": round(open_price,2),
-                    "H": round(high_price,2),
-                    "L": round(low_price,2),
-                    "C": round(close_price,2),
-                    "URL": url
-                })
-        except:
-            # Si site impossible à récupérer, simuler
-            results.append({
-                "Site": site_name,
-                "Date/Heure": "-",
-                "Annonce": "Impossible récupérer",
-                "O": last_price,
-                "H": last_price*1.001,
-                "L": last_price*0.999,
-                "C": last_price,
-                "URL": url
-            })
-    return pd.DataFrame(results)
+def generate_ohlc_per_source(source_name, base_price, n=3):
+    """
+    Génère n annonces OHLC simulées uniques pour une source
+    """
+    annonces = []
+    for i in range(n):
+        impact = random.randint(-3, 3)
+        open_price = round(base_price * (1 + 0.001*impact), 2)
+        high_price = round(open_price * (1 + random.uniform(0.0005,0.002)), 2)
+        low_price = round(open_price * (1 - random.uniform(0.0005,0.002)), 2)
+        close_price = round(open_price * (1 + 0.0005*impact), 2)
+        time_event = datetime.now() + timedelta(minutes=5*i)
+        annonces.append({
+            "Site": source_name,
+            "Date/Heure": time_event.strftime("%Y-%m-%d %H:%M"),
+            "Annonce": f"Annonce simulée {i+1} ({source_name})",
+            "O": open_price,
+            "H": high_price,
+            "L": low_price,
+            "C": close_price,
+            "URL": f"https://www.{source_name.lower()}.com"
+        })
+    return pd.DataFrame(annonces)
 
 # -----------------------------
 # Paramètres utilisateur
@@ -104,19 +75,18 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
         model_fit = model.fit()
         forecast_base = model_fit.forecast(steps=forecast_days)
 
-        # Récupérer annonces filtrées
-        df_annonces = get_economic_announcements()
-        df_filtered = df_annonces[df_annonces['Site'].isin(sources_selectionnees)]
-
-        last_date = pd.to_datetime(data['Date'].iloc[-1])
-        future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
+        # Générer OHLC par source
+        df_all_sources = pd.DataFrame()
+        for source in sources_selectionnees:
+            df_source = generate_ohlc_per_source(source, last_price, n=forecast_days)
+            df_all_sources = pd.concat([df_all_sources, df_source], ignore_index=True)
 
         # ---------------------
         # Tableau OHLC par source
         # ---------------------
         st.subheader("📋 OHLC Prévisionnel par Source")
         for site in sources_selectionnees:
-            df_site = df_filtered[df_filtered['Site']==site]
+            df_site = df_all_sources[df_all_sources['Site']==site]
             st.markdown(f"### 🔹 Source : {site}")
             for i, row in df_site.iterrows():
                 st.markdown(
@@ -134,6 +104,7 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
             df_candles.columns = df_candles.columns.get_level_values(0)
 
         fig = go.Figure()
+
         # Historique
         fig.add_trace(go.Candlestick(
             x=df_candles['Date'],
@@ -151,7 +122,7 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
         # Bougies par source
         colors = ['#FFD700','#FFA500','#FFFF00','#FFDAB9','#FFFACD']
         for i, site in enumerate(sources_selectionnees):
-            df_site = df_filtered[df_filtered['Site']==site]
+            df_site = df_all_sources[df_all_sources['Site']==site]
             fig.add_trace(go.Candlestick(
                 x=pd.to_datetime(df_site['Date/Heure']),
                 open=df_site['O'],
@@ -191,4 +162,4 @@ if st.button(f"Lancer prévision {forecast_days} jours"):
             paper_bgcolor='#1e1e2f'
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)              
