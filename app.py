@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import plotly.graph_objects as go  # ← NOUVEAU : remplace matplotlib
+import plotly.graph_objects as go
 from statsmodels.tsa.arima.model import ARIMA
 from datetime import date, timedelta
 import warnings
@@ -73,6 +73,8 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
         st.dataframe(df_result, use_container_width=True)
 
+        st.divider()
+
         # -------------------------------------------------------
         # --- GRAPHIQUE CHANDELIER (CANDLESTICK) AVEC PLOTLY ---
         # -------------------------------------------------------
@@ -111,7 +113,7 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             y=forecast_y,
             mode='lines+markers',
             name='Prévision ARIMA',
-            line=dict(color='#FFD700', width=2, dash='dash'),  # Or / jaune
+            line=dict(color='#FFD700', width=2, dash='dash'),
             marker=dict(size=7, color='#FFD700', symbol='circle'),
         ))
 
@@ -135,8 +137,8 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             ),
             xaxis_title='Date',
             yaxis_title='Prix en USD',
-            xaxis_rangeslider_visible=False,   # Masque le mini-slider en bas
-            template='plotly_dark',            # Thème sombre (style trading)
+            xaxis_rangeslider_visible=False,
+            template='plotly_dark',
             legend=dict(
                 orientation='h',
                 yanchor='bottom',
@@ -149,15 +151,16 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             paper_bgcolor='#1e1e2f',
         )
 
-        fig.update_xaxis(
+        # ✅ CORRIGÉ : update_xaxes et update_yaxes (avec "s")
+        fig.update_xaxes(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.08)',
         )
-        fig.update_yaxis(
+        fig.update_yaxes(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.08)',
             tickprefix='$',
         )
 
         st.plotly_chart(fig, use_container_width=True)
-    
+        
