@@ -152,24 +152,20 @@ def get_economic_announcements():
     return pd.DataFrame(results)
 
 # -------------------------
-# Fonction pour créer tableau OHLC avec 5 sources par bougie
+# Fonction pour créer tableau OHLC avec sources dynamiques et liens cliquables
 # -------------------------
-def generate_forecast_with_5_sources(future_dates, pred_open, pred_high, pred_low, pred_close, headlines):
+def generate_forecast_with_sources(future_dates, pred_open, pred_high, pred_low, pred_close, headlines, sources_selectionnees):
     ohlc_data = []
-    sites_to_use = ["CoinDesk","Investing","ForexFactory","TradingEconomics","MarketWatch"]
-
     for i, d in enumerate(future_dates):
         hl_today = []
-        for site in sites_to_use:
-            # Chercher la première headline correspondant au site
+        for site in sources_selectionnees:
             site_hl = next((h for h in headlines if h["Site"] == site), None)
             if site_hl:
                 hl_today.append(site_hl)
             else:
                 hl_today.append({"Site": site, "URL":"#", "Heure":"-"})
 
-        # Fusionner sources et heures
-        sources = ", ".join([f"[{h['Site']}]({h['URL']})" for h in hl_today])
+        sources_html = " | ".join([f'<a href="{h["URL"]}" target="_blank">{h["Site"]}</a>' for h in hl_today])
         heures = ", ".join([h['Heure'] for h in hl_today])
 
         ohlc_data.append({
@@ -178,10 +174,9 @@ def generate_forecast_with_5_sources(future_dates, pred_open, pred_high, pred_lo
             "High": pred_high[i],
             "Low": pred_low[i],
             "Close": pred_close[i],
-            "Sources": sources,
+            "Sources_HTML": sources_html,
             "Heures": heures
         })
-
     return pd.DataFrame(ohlc_data)
 
 # -------------------------
@@ -191,6 +186,14 @@ if menu == "Prévision BTC":
 
     forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?", 1, 14, 7)
     historique_jours = st.slider("📉 Nombre de jours historiques à afficher", 10, 60, 30)
+
+    # Sélection dynamique des sources
+    sources_disponibles = ["CoinDesk","Investing","ForexFactory","TradingEconomics","MarketWatch"]
+    sources_selectionnees = st.multiselect(
+        "Sélectionnez les sources à utiliser pour la prévision OHLC :",
+        options=sources_disponibles,
+        default=sources_disponibles
+    )
 
     if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
@@ -215,20 +218,22 @@ if menu == "Prévision BTC":
             pred_low = [c*0.99 for c in pred_close]
 
             # -------------------------
-            # Tableau prévision OHLC avec 5 sources
+            # Tableau prévision OHLC avec sources sélectionnées
             # -------------------------
-            df_forecast = generate_forecast_with_5_sources(
-                future_dates, pred_open, pred_high, pred_low, pred_close, headlines
+            df_forecast = generate_forecast_with_sources(
+                future_dates, pred_open, pred_high, pred_low, pred_close, headlines, sources_selectionnees
             )
 
-            st.subheader("📋 Tableau prévision OHLC avec 5 sources et heures")
+            st.subheader("📋 Tableau prévision OHLC avec sources et heures")
             for i in range(len(df_forecast)):
                 st.markdown(
                     f"**{df_forecast['Date'][i]}** | O: {df_forecast['Open'][i]:.2f} | "
                     f"H: {df_forecast['High'][i]:.2f} | L: {df_forecast['Low'][i]:.2f} | "
-                    f"C: {df_forecast['Close'][i]:.2f} | Heures: {df_forecast['Heures'][i]} | "
-                    f"Sources: {df_forecast['Sources'][i]}"
+                    f"C: {df_forecast['Close'][i]:.2f} | Heures: {df_forecast['Heures'][i]}",
+                    unsafe_allow_html=True
                 )
+                st.markdown(df_forecast['Sources_HTML'][i], unsafe_allow_html=True)
+                st.markdown("---")
 
             # -------------------------
             # Graphique chandelier
