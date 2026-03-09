@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
-st.title("📈 Historique + Prévision BTC/USD en bougies vertes/rouges")
+st.title("📈 Historique + Prévision BTC/USD avec couleurs différentes")
 
 # -------------------------
 # Télécharger données BTC
@@ -35,6 +35,7 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
+    # Modèle ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
@@ -71,17 +72,16 @@ if st.button("Lancer la prévision"):
     df_forecast = pd.DataFrame(ohlc_forecast)
 
     # -------------------------
-    # Graphique chandeliers vert/rouge
+    # Graphique chandeliers vert/rouge pour historique + bleu/orange pour prévision
     # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
 
-    # Assurer le format datetime
     data["Date"] = pd.to_datetime(data["Date"])
     df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
 
     fig = go.Figure()
 
-    # Historique 1 an avec vert/rouge
+    # Historique : vert = hausse, rouge = baisse
     fig.add_trace(go.Candlestick(
         x=data["Date"],
         open=data["Open"],
@@ -93,7 +93,7 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="red"
     ))
 
-    # Prévision ARIMA avec vert/rouge
+    # Prévision : bleu = hausse, orange = baisse
     fig.add_trace(go.Candlestick(
         x=df_forecast["Date"],
         open=df_forecast["Open"],
@@ -101,8 +101,8 @@ if st.button("Lancer la prévision"):
         low=df_forecast["Low"],
         close=df_forecast["Close"],
         name="Prévision",
-        increasing_line_color="green",
-        decreasing_line_color="red"
+        increasing_line_color="blue",
+        decreasing_line_color="orange"
     ))
 
     fig.update_layout(
