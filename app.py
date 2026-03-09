@@ -8,11 +8,11 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# Configuration de la page
+# Configuration
 st.set_page_config(page_title="BTC Analyse", layout="centered")
 st.title("📈 Prévision BTC/USD (ARIMA)")
 
-# 1. Télécharger données
+# Chargement des données
 @st.cache_data
 def load_data():
     end_date = date.today()
@@ -24,8 +24,13 @@ def load_data():
 data = load_data()
 st.success("✅ Données actuelles téléchargées avec succès !")
 
-# Choix jours prévision
-forecast_days = st.slider("🗓️ Combien de jours voulez-vous prédire ?",1,14,7)
+# Choix des jours de prévision
+forecast_days = st.slider(
+    "🗓️ Combien de jours voulez-vous prédire ?",
+    min_value=1,
+    max_value=14,
+    value=7
+)
 
 if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
 
@@ -41,24 +46,24 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
         last_date = pd.to_datetime(data['Date'].iloc[-1])
         last_price = float(data['Close'].iloc[-1])
 
-        future_dates = [last_date + timedelta(days=i) for i in range(1,forecast_days+1)]
+        future_dates = [
+            last_date + timedelta(days=i)
+            for i in range(1, forecast_days+1)
+        ]
 
         st.divider()
 
-        # ------------------------
-        # GRAPHIQUE CHANDELIER
-        # ------------------------
-
+        # Graphique chandelier
         st.subheader("🕯️ Graphique Chandelier BTC/USD")
 
         df_candles = data.tail(60).copy()
 
-        if isinstance(df_candles.columns,pd.MultiIndex):
+        if isinstance(df_candles.columns, pd.MultiIndex):
             df_candles.columns = df_candles.columns.get_level_values(0)
 
         fig = go.Figure()
 
-        # 1️⃣ Chandeliers historiques
+        # ───────── Historique ─────────
         fig.add_trace(go.Candlestick(
             x=df_candles['Date'],
             open=df_candles['Open'],
@@ -72,20 +77,15 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             decreasing_fillcolor='#ef5350'
         ))
 
-        # --------------------------------
-        # Construction bougies prévision
-        # --------------------------------
-
+        # ───────── Prévision OHLC ─────────
         pred_close = list(forecast)
-
         pred_open = [last_price] + pred_close[:-1]
 
-        pred_high = [c*1.01 for c in pred_close]
-        pred_low = [c*0.99 for c in pred_close]
+        pred_high = [c * 1.01 for c in pred_close]
+        pred_low = [c * 0.99 for c in pred_close]
 
-        # 2️⃣ Chandeliers de prévision jaunes
+        # ───────── Bougies prévision jaunes ─────────
         fig.add_trace(go.Candlestick(
-
             x=future_dates,
             open=pred_open,
             high=pred_high,
@@ -101,18 +101,19 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             decreasing_fillcolor='rgba(255,215,0,0.6)',
 
             hovertemplate=
-            "<b>Date:</b> %{x}<br>"+
-            "Open: $%{open:.2f}<br>"+
-            "High: $%{high:.2f}<br>"+
-            "Low: $%{low:.2f}<br>"+
-            "Close: $%{close:.2f}<extra>Prévision</extra>"
+            "<b>Date:</b> %{x}<br>"
+            "Open: $%{open:.2f}<br>"
+            "High: $%{high:.2f}<br>"
+            "Low: $%{low:.2f}<br>"
+            "Close: $%{close:.2f}"
+            "<extra>Prévision</extra>"
         ))
 
-        # 3️⃣ Zone jaune prévision
+        # ───────── Zone de prévision ─────────
         fig.add_vrect(
             x0=last_date,
             x1=future_dates[-1],
-            fillcolor="rgba(255,215,0,0.07)",
+            fillcolor="rgba(255,215,0,0.08)",
             layer="below",
             line_width=0,
             annotation_text="Zone prévision",
@@ -120,10 +121,10 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             annotation_font_color="#FFD700"
         )
 
-        # Style graphique
+        # ───────── Mise en forme ─────────
         fig.update_layout(
 
-            title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days}j',
+            title=f'BTC/USD — Chandelier 60j + Prévision {forecast_days} jours',
 
             xaxis_title='Date',
             yaxis_title='Prix USD',
@@ -135,12 +136,19 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             height=550,
 
             plot_bgcolor='#1e1e2f',
-            paper_bgcolor='#1e1e2f'
+            paper_bgcolor='#1e1e2f',
+
+            bargap=0.25
         )
 
+        # Espacer les bougies
         fig.update_xaxes(
             showgrid=True,
-            gridcolor='rgba(255,255,255,0.08)'
+            gridcolor='rgba(255,255,255,0.08)',
+            range=[
+                df_candles['Date'].iloc[0],
+                future_dates[-1] + timedelta(days=3)
+            ]
         )
 
         fig.update_yaxes(
@@ -149,4 +157,4 @@ if st.button(f"Lancer les prévisions pour {forecast_days} jours"):
             tickprefix='$'
         )
 
-        st.plotly_chart(fig,use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
