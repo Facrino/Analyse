@@ -1,33 +1,44 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import matplotlib.pyplot as plt
+import requests
+import plotly.graph_objects as go
 from statsmodels.tsa.arima.model import ARIMA
 from datetime import date, timedelta
-import requests
 import warnings
 
-warnings.filterwarnings('ignore')
-
-# Configuration
-st.set_page_config(page_title="BTC Analyse", layout="centered")
-st.title("📈 Prévision BTC/USD (ARIMA + Analyse News)")
+warnings.filterwarnings("ignore")
 
 # =========================
-# TELECHARGEMENT DES DONNEES
+# CONFIGURATION PAGE
+# =========================
+
+st.set_page_config(page_title="BTC Analyse IA", layout="centered")
+st.title("📈 Prévision BTC/USD avec IA + News")
+
+# =========================
+# TELECHARGEMENT BTC
 # =========================
 
 @st.cache_data
 def load_data():
     end_date = date.today()
     start_date = end_date - timedelta(days=365)
-    data = yf.download('BTC-USD', start=start_date, end=end_date, progress=False)
+
+    data = yf.download(
+        "BTC-USD",
+        start=start_date,
+        end=end_date,
+        progress=False
+    )
+
     data.reset_index(inplace=True)
+
     return data
 
 data = load_data()
 
-st.success("✅ Données BTC chargées")
+st.success("✅ Données BTC téléchargées")
 
 # =========================
 # CALENDRIER ECONOMIQUE
@@ -45,6 +56,7 @@ def get_multi_source_calendar():
     ]
 
     for url in sources:
+
         try:
             r = requests.get(url, timeout=8)
 
@@ -54,48 +66,50 @@ def get_multi_source_calendar():
         except:
             pass
 
-    if len(events) > 0:
+    if events:
         return pd.DataFrame(events)
-    else:
-        return pd.DataFrame()
+
+    return pd.DataFrame()
 
 calendar_df = get_multi_source_calendar()
 
 if not calendar_df.empty:
-    st.info(f"📅 Calendrier chargé depuis 3 sites → {len(calendar_df)} annonces")
+    st.info(
+        f"📅 Calendrier chargé depuis 3 sites → {len(calendar_df)} annonces"
+    )
 
 # =========================
-# PARAMETRES UTILISATEUR
+# PARAMETRES
 # =========================
 
 forecast_days = st.slider(
-    "🗓️ Combien de jours voulez-vous prédire ?",
+    "🗓️ Nombre de jours à prédire",
     1,
     14,
     7
 )
 
 # =========================
-# BOUTON PREVISION
+# LANCER PREVISION
 # =========================
 
-if st.button("Lancer les prévisions"):
+if st.button("🚀 Lancer la prévision"):
 
-    with st.spinner("Calcul de l'IA..."):
+    with st.spinner("Calcul de l'IA en cours..."):
 
         # =========================
         # MODELE ARIMA
         # =========================
 
-        df_train = data.set_index('Date')
+        df_train = data.set_index("Date")
 
-        model = ARIMA(df_train['Close'], order=(5,1,0))
+        model = ARIMA(df_train["Close"], order=(5,1,0))
         model_fit = model.fit()
 
         forecast_close = model_fit.forecast(steps=forecast_days)
 
-        last_date = pd.to_datetime(data['Date'].iloc[-1])
-        last_price = float(data['Close'].iloc[-1])
+        last_date = pd.to_datetime(data["Date"].iloc[-1])
+        last_price = float(data["Close"].iloc[-1])
 
         future_dates = [
             last_date + timedelta(days=i)
@@ -103,7 +117,7 @@ if st.button("Lancer les prévisions"):
         ]
 
         dates_formattees = [
-            d.strftime('%d/%m/%Y')
+            d.strftime("%d/%m/%Y")
             for d in future_dates
         ]
 
@@ -115,30 +129,33 @@ if st.button("Lancer les prévisions"):
 
         prev_close = last_price
 
-        range_moyen = (data['High'] - data['Low']).mean()
+        range_moyen = (data["High"] - data["Low"]).mean()
 
         for i in range(forecast_days):
 
-            day_str = future_dates[i].strftime('%Y-%m-%d')
+            day_str = future_dates[i].strftime("%Y-%m-%d")
 
             predicted_close = float(forecast_close.iloc[i])
 
-            # Vérifier les news
             high_impact = 0
 
             if not calendar_df.empty:
 
-                if 'date' in calendar_df.columns:
+                if "date" in calendar_df.columns:
 
                     day_events = calendar_df[
-                        calendar_df['date'].astype(str).str.contains(day_str, na=False)
+                        calendar_df["date"]
+                        .astype(str)
+                        .str.contains(day_str, na=False)
                     ]
 
-                    if 'impact' in calendar_df.columns:
+                    if "impact" in calendar_df.columns:
 
                         high_impact = len(
                             day_events[
-                                day_events['impact'].astype(str).str.contains('High|3', case=False, na=False)
+                                day_events["impact"]
+                                .astype(str)
+                                .str.contains("High|3", case=False, na=False)
                             ]
                         )
 
@@ -146,9 +163,13 @@ if st.button("Lancer les prévisions"):
 
             predicted_open = prev_close
 
-            predicted_high = predicted_open + (range_moyen * multiplier * 0.75)
+            predicted_high = predicted_open + (
+                range_moyen * multiplier * 0.75
+            )
 
-            predicted_low = predicted_open - (range_moyen * multiplier * 0.55)
+            predicted_low = predicted_open - (
+                range_moyen * multiplier * 0.55
+            )
 
             ohlc_forecast.append({
 
@@ -162,7 +183,8 @@ if st.button("Lancer les prévisions"):
 
                 "Close": round(predicted_close,2),
 
-                "News": f"{high_impact} haute impact" if high_impact > 0 else "Aucune"
+                "News": f"{high_impact} haute impact"
+                if high_impact > 0 else "Aucune"
 
             })
 
@@ -171,42 +193,74 @@ if st.button("Lancer les prévisions"):
         df_ohlc = pd.DataFrame(ohlc_forecast)
 
         # =========================
-        # RESULTATS
+        # TABLEAU RESULTAT
         # =========================
 
-        st.subheader("📊 Prévision OHLC (Stratégie Scalping)")
+        st.subheader("📊 Prévision OHLC")
 
         st.dataframe(df_ohlc, use_container_width=True)
 
-        st.caption("Analyse automatique ForexFactory + FxStreet + MQL5")
-
         # =========================
-        # GRAPHIQUE
+        # GRAPHIQUE CHANDELIER
         # =========================
 
-        st.subheader("🎨 Graphique")
+        st.subheader("🕯️ Graphique Chandeliers")
 
-        fig, ax = plt.subplots(figsize=(10,5))
+        fig = go.Figure()
 
-        ax.plot(
-            data['Date'].tail(60),
-            data['Close'].tail(60),
-            label="Historique",
-            color="orange"
+        fig.add_trace(
+            go.Candlestick(
+
+                x=df_ohlc["Date"],
+
+                open=df_ohlc["Open"],
+
+                high=df_ohlc["High"],
+
+                low=df_ohlc["Low"],
+
+                close=df_ohlc["Close"],
+
+                name="Prévision BTC"
+            )
         )
 
-        ax.plot(
-            future_dates,
-            forecast_close,
-            label="Prévision",
-            color="green",
-            marker='o'
+        # =========================
+        # AJOUT NEWS SUR GRAPH
+        # =========================
+
+        for i, row in df_ohlc.iterrows():
+
+            if row["News"] != "Aucune":
+
+                fig.add_annotation(
+
+                    x=row["Date"],
+
+                    y=row["High"],
+
+                    text="📰 News",
+
+                    showarrow=True,
+
+                    arrowhead=2
+
+                )
+
+        fig.update_layout(
+
+            title="Prévision BTC/USD (Bougies)",
+
+            xaxis_title="Date",
+
+            yaxis_title="Prix USD",
+
+            template="plotly_dark"
+
         )
 
-        ax.legend()
+        st.plotly_chart(fig, use_container_width=True)
 
-        ax.grid(True)
-
-        plt.xticks(rotation=45)
-
-        st.pyplot(fig)
+        st.caption(
+            "Analyse automatique ForexFactory + FxStreet + MQL5"
+            )
