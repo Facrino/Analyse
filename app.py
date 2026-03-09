@@ -9,46 +9,38 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="BTC Candlestick Forecast", layout="centered")
-st.title("📈 Historique + Prévision BTC/USD (vert/rouge & bleu/orange)")
+st.title("📈 Historique + Prévision BTC/USD (bougies OHLC)")
 
 # -------------------------
-# Télécharger données BTC
+# Charger données BTC
 # -------------------------
 @st.cache_data
 def load_data():
     end_date = date.today()
     start_date = end_date - timedelta(days=365)
 
-    try:
-        data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
-    except Exception as e:
-        st.error(f"Erreur téléchargement BTC : {e}")
-        return pd.DataFrame()
-
+    data = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
     if data.empty:
-        st.error("⚠️ Aucune donnée récupérée depuis yfinance. Vérifie la connexion ou le symbole.")
+        st.error("⚠️ Pas de données récupérées depuis yfinance")
         return pd.DataFrame()
-
+    
     data.reset_index(inplace=True)
-
-    # Vérifier que toutes les colonnes OHLC existent
-    required_cols = ["Open", "High", "Low", "Close"]
-    missing_cols = [col for col in required_cols if col not in data.columns]
-    if missing_cols:
-        st.error(f"⚠️ Colonnes manquantes dans le téléchargement : {', '.join(missing_cols)}")
-        return pd.DataFrame()
-
+    
+    # Assurer que les colonnes OHLC existent
+    for col in ["Open","High","Low","Close"]:
+        if col not in data.columns:
+            st.error(f"⚠️ Colonne manquante : {col}")
+            return pd.DataFrame()
+    
     # Conversion sécurisée
-    for col in required_cols:
+    for col in ["Open","High","Low","Close"]:
         data[col] = pd.to_numeric(data[col], errors="coerce")
-
+    
     return data
 
 data = load_data()
 if data.empty:
     st.stop()
-else:
-    st.success("✅ Données BTC chargées avec succès !")
 
 # -------------------------
 # Slider prévision
@@ -60,43 +52,34 @@ forecast_days = st.slider("Nombre de jours à prévoir", 1, 14, 7)
 # -------------------------
 if st.button("Lancer la prévision"):
 
+    # ARIMA
     df_train = data.set_index("Date")
     model = ARIMA(df_train["Close"], order=(5,1,0))
     model_fit = model.fit()
     forecast_close = model_fit.forecast(steps=forecast_days)
 
     last_date = pd.to_datetime(data["Date"].iloc[-1])
-    last_price = float(data["Close"].iloc[-1])
+    last_close = float(data["Close"].iloc[-1])
     future_dates = [last_date + timedelta(days=i) for i in range(1, forecast_days+1)]
 
-    # Génération OHLC prévision
+    # Construire OHLC pour prévision
     ohlc_forecast = []
-    prev_close = last_price
+    prev_close = last_close
     range_moyen = (data["High"] - data["Low"]).mean()
-
     for i in range(forecast_days):
-        predicted_close = float(forecast_close.iloc[i])
-        predicted_open = prev_close
-        predicted_high = predicted_open + max(range_moyen*0.75, 0.01)
-        predicted_low  = predicted_open - max(range_moyen*0.55, 0.01)
-
-        ohlc_forecast.append({
-            "Date": future_dates[i],
-            "Open": predicted_open,
-            "High": predicted_high,
-            "Low": predicted_low,
-            "Close": predicted_close
-        })
-
-        prev_close = predicted_close
+        close = float(forecast_close.iloc[i])
+        open_ = prev_close
+        high = open_ + max(range_moyen*0.75, 0.01)
+        low  = open_ - max(range_moyen*0.55, 0.01)
+        ohlc_forecast.append({"Date": future_dates[i], "Open": open_, "High": high, "Low": low, "Close": close})
+        prev_close = close
 
     df_forecast = pd.DataFrame(ohlc_forecast)
 
+    # -------------------------
     # Graphique chandeliers
+    # -------------------------
     st.subheader("🕯️ Historique + Prévision BTC/USD")
-
-    data["Date"] = pd.to_datetime(data["Date"])
-    df_forecast["Date"] = pd.to_datetime(df_forecast["Date"])
 
     fig = go.Figure()
 
@@ -124,21 +107,15 @@ if st.button("Lancer la prévision"):
         decreasing_line_color="orange"
     ))
 
-    # Forcer l’échelle Y
+    # Ajuster échelle Y pour tout voir
     y_min = min(data["Low"].min(), df_forecast["Low"].min()) * 0.995
     y_max = max(data["High"].max(), df_forecast["High"].max()) * 1.005
-
-    fig.update_layout(
-        title="BTC/USD Historique + Prévision",
-        xaxis_title="Date",
-        yaxis_title="Prix USD",
-        xaxis_rangeslider_visible=True,
-        yaxis=dict(range=[y_min, y_max]),
-        template="plotly_dark"
-    )
+    fig.update_layout(xaxis_rangeslider_visible=True, yaxis=dict(range=[y_min, y_max]), template="plotly_dark")
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Tableau prévision
-    st.subheader("Tableau prévision OHLC")
+    # -------------------------
+    # Tableau OHLC prévision
+    # -------------------------
+    st.subheader("Tableau OHLC prévision")
     st.dataframe(df_forecast)
