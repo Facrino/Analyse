@@ -192,12 +192,15 @@ if menu == "Prévision BTC":
             st.dataframe(df_forecast, use_container_width=True)
 
             # -------------------------
-            # Graphique chandelier élargi
+            # Graphique chandelier élargi avec historique visible
             # -------------------------
             df_candles = data.tail(historique_jours).copy()
+            if isinstance(df_candles.columns, pd.MultiIndex):
+                df_candles.columns = df_candles.columns.get_level_values(0)
+
             fig = go.Figure()
 
-            # Historique
+            # Bougies historiques
             fig.add_trace(go.Candlestick(
                 x=df_candles['Date'],
                 open=df_candles['Open'],
@@ -238,7 +241,7 @@ if menu == "Prévision BTC":
                 annotation_font_color="#FFD700"
             )
 
-            # Layout avec plus d'espace
+            # Layout graphique
             fig.update_layout(
                 title=f'BTC/USD — Historique {historique_jours}j + Prévision {forecast_days} jours',
                 xaxis_title='Date',
@@ -251,7 +254,7 @@ if menu == "Prévision BTC":
                 bargap=0.35
             )
 
-            # Axe X élargi
+            # Axe X élargi pour plus d'espace
             fig.update_xaxes(
                 showgrid=True,
                 gridcolor='rgba(255,255,255,0.08)',
